@@ -1,0 +1,13 @@
+# Core dependencies for goggles detection
+opencv-python>=4.8.0
+numpy>=1.21.0
+Pillow>=10.0.0
+
+# SAM (Segment Anything Model)
+segment-anything>=1.0
+
+# Streamlit for UI
+streamlit>=1.28.0
+
+# Additional utilities
+pathlib2>=2.3.0  # For older Python versions if needed 
