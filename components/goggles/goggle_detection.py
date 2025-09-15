@@ -691,6 +691,19 @@ class GogglesDetector:
             mask_path = all_masks_dir / mask_filename
             cv2.imwrite(str(mask_path), match['full_binary_mask'])
             
+            # Save color cropped region for ALL masks (both goggles and shoes)
+            bbox = match.get('bbox', [0, 0, 100, 100])
+            x, y, w, h = bbox
+            
+            # Crop the region from original image
+            cropped_region = original_image[y:y+h, x:x+w]
+            if cropped_region.size > 0:
+                # Save color cropped region
+                cropped_filename = f"cropped_color_{i:03d}_{ppe_type}_sim_{similarity:.3f}_{detected}.png"
+                cropped_path = all_masks_dir / cropped_filename
+                cv2.imwrite(str(cropped_path), cropped_region)
+                print(f"Saved color cropped region: {cropped_path}")
+            
             # Create comparison based on PPE type
             print(f"Match {i}: similarity={similarity:.3f}, ppe_type={ppe_type}")
             try:
