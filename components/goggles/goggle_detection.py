@@ -3,7 +3,7 @@ PPE Detection Component
 =======================
 
 Detects proper goggles and shoes by comparing SAM-generated masks with reference templates.
-Approach: SAM masks → Embedding comparison → 90% threshold → Color-coded visualization
+Approach: SAM masks -> Embedding comparison -> 90% threshold -> Color-coded visualization
 """
 
 import os
@@ -46,11 +46,13 @@ class GogglesDetector:
         self.face_detector = FaceDetectorMTCNN()
         self.reference_path = Path(reference_path) if reference_path else Path("reference_data/goggles")
         self.sam_checkpoint = sam_checkpoint or "sam_vit_h_4b8939.pth"
+
         self.temp_dir = Path("temp")
         self.temp_dir.mkdir(exist_ok=True)
         
         # Detection parameters
-        self.similarity_threshold = 0.90  # 90% similarity threshold
+        self.similarity_threshold = 0.90  # 90% similarity threshold (for goggles and shoes)
+        self.cuff_similarity_threshold = 0.50  # 50% similarity threshold for cuffs (more lenient)
         self.min_mask_area = 100
         self.max_mask_area = 50000
         
@@ -71,11 +73,14 @@ class GogglesDetector:
                         std=[0.229, 0.224, 0.225]),
         ])
 
-        # Load reference data for goggles and shoes (left/right separately)
+        # Load reference data for goggles, shoes, and cuffs (left/right separately)
         self.goggles_data = self._load_reference_embeddings("reference_data/goggles")
         self.left_shoes_data = self._load_reference_embeddings("reference_data/shoes/left")
         self.right_shoes_data = self._load_reference_embeddings("reference_data/shoes/right")
         self.shoes_data = self.left_shoes_data + self.right_shoes_data  # Combined for compatibility
+        self.left_cuffs_data = self._load_reference_embeddings("reference_data/cuffs/left")
+        self.right_cuffs_data = self._load_reference_embeddings("reference_data/cuffs/right")
+        self.cuffs_data = self.left_cuffs_data + self.right_cuffs_data  # Combined for compatibility
         
         # Also load traditional reference masks for compatibility
         self.reference_masks = self._load_reference_masks()
@@ -84,12 +89,12 @@ class GogglesDetector:
         self.sam_model = None
         self.mask_generator = None
         
-        total_refs = len(self.goggles_data) + len(self.shoes_data)
-        print(f"PPE Detector initialized with {len(self.goggles_data)} goggles, {len(self.left_shoes_data)} left shoes, and {len(self.right_shoes_data)} right shoes references (total: {total_refs})")
+        total_refs = len(self.goggles_data) + len(self.shoes_data) + len(self.cuffs_data)
+        print(f"PPE Detector initialized with {len(self.goggles_data)} goggles, {len(self.left_shoes_data)} left shoes, {len(self.right_shoes_data)} right shoes, {len(self.left_cuffs_data)} left cuffs, and {len(self.right_cuffs_data)} right cuffs references (total: {total_refs})")
 
     def _load_reference_embeddings(self, reference_path: str):
         """
-        Load reference images and compute their embeddings for shoes (color images from SAM crops)
+        Load reference images and compute their embeddings for shoes and cuffs (color images from SAM crops)
         """
         ref_data = []
         ref_dir = Path(reference_path)
@@ -97,6 +102,17 @@ class GogglesDetector:
         if not ref_dir.exists():
             print(f"Warning: Reference path {ref_dir} does not exist")
             return ref_data
+
+        # Determine PPE type and side from path
+        if "shoes" in str(reference_path):
+            ppe_type = "shoes"
+            side = "left" if "left" in str(reference_path) else "right"
+        elif "cuffs" in str(reference_path):
+            ppe_type = "cuffs"
+            side = "left" if "left" in str(reference_path) else "right"
+        else:
+            ppe_type = "goggles"
+            side = None
 
         # Load PNG files
         for ref_img_path in ref_dir.glob("*.png"):
@@ -112,7 +128,8 @@ class GogglesDetector:
             ref_data.append({
                 "name": ref_img_path.name,
                 "embedding": embedding,
-                "type": "shoes" if "shoes" in str(reference_path) else "goggles"
+                "type": ppe_type,
+                "side": side
             })
 
         # Also load JPG files
@@ -128,7 +145,8 @@ class GogglesDetector:
             ref_data.append({
                 "name": ref_img_path.name,
                 "embedding": embedding,
-                "type": "shoes" if "shoes" in str(reference_path) else "goggles"
+                "type": ppe_type,
+                "side": side
             })
 
         print(f"Loaded {len(ref_data)} reference embeddings from {reference_path}")
@@ -252,7 +270,7 @@ class GogglesDetector:
     def _find_best_matches(self, sam_masks, full_image):
         """Find best matches using different approaches for goggles vs shoes"""
         matches = []
-        all_references = self.goggles_data + self.shoes_data
+        all_references = self.goggles_data + self.shoes_data + self.cuffs_data
 
         print(f"Processing {len(sam_masks)} SAM masks against {len(all_references)} references...")
 
@@ -269,14 +287,16 @@ class GogglesDetector:
             pil_masked = Image.fromarray(cv2.cvtColor(masked, cv2.COLOR_BGR2RGB))
             goggle_embedding = self._get_embedding(pil_masked)
 
-            # For SHOES: Crop original image using SAM mask region
+            # For SHOES and CUFFS: Crop original image using SAM mask region
             x, y, w, h = bbox
             cropped_region = full_image[y:y+h, x:x+w]
             shoe_embedding = None
+            cuff_embedding = None
             if cropped_region.size > 0:
                 cropped_rgb = cv2.cvtColor(cropped_region, cv2.COLOR_BGR2RGB)
                 pil_cropped = Image.fromarray(cropped_rgb)
                 shoe_embedding = self._get_embedding(pil_cropped)
+                cuff_embedding = self._get_embedding(pil_cropped)  # Same embedding for both
 
             # Find best match for GOGGLES using full masked image
             best_goggle_sim = 0.0
@@ -307,17 +327,42 @@ class GogglesDetector:
                         # Extract side from reference name
                         shoe_side = ref.get("side", "unknown")
 
+            # Find best match for CUFFS using cropped image
+            best_cuff_sim = 0.0
+            best_cuff_ref = None
+            cuff_side = "unknown"
+            if cuff_embedding is not None:
+                # Try both left and right cuff references
+                for ref in self.cuffs_data:
+                    sim = F.cosine_similarity(
+                        cuff_embedding.unsqueeze(0),
+                        ref["embedding"].unsqueeze(0)
+                    ).item()
+                    if sim > best_cuff_sim:
+                        best_cuff_sim = sim
+                        best_cuff_ref = ref
+                        # Extract side from reference name
+                        cuff_side = ref.get("side", "unknown")
+
             # Determine which PPE type has better match
-            if best_goggle_sim > best_shoe_sim:
+            if best_goggle_sim > best_shoe_sim and best_goggle_sim > best_cuff_sim:
                 best_sim = best_goggle_sim
                 best_ref = best_goggle_ref
                 ppe_type = "goggles"
-            else:
+            elif best_shoe_sim > best_cuff_sim:
                 best_sim = best_shoe_sim
                 best_ref = best_shoe_ref
                 ppe_type = "shoes"
+            else:
+                best_sim = best_cuff_sim
+                best_ref = best_cuff_ref
+                ppe_type = "cuffs"
 
-            is_detected = best_sim >= self.similarity_threshold
+            # Use different thresholds for different PPE types
+            if ppe_type == "cuffs":
+                is_detected = best_sim >= self.cuff_similarity_threshold
+            else:
+                is_detected = best_sim >= self.similarity_threshold
             
             # Create the match data
             match_data = {
@@ -331,17 +376,20 @@ class GogglesDetector:
                 "is_detected": is_detected,
                 "is_goggle": is_detected and ppe_type == "goggles",
                 "is_shoe": is_detected and ppe_type == "shoes",
+                "is_cuff": is_detected and ppe_type == "cuffs",
                 "shoe_side": shoe_side if ppe_type == "shoes" else None,
+                "cuff_side": cuff_side if ppe_type == "cuffs" else None,
                 "reference_match": {
                     "name": best_ref["name"] if best_ref else None,
                     "type": ppe_type,
-                    "side": shoe_side if ppe_type == "shoes" else None
+                    "side": shoe_side if ppe_type == "shoes" else (cuff_side if ppe_type == "cuffs" else None)
                 },
                 "predicted_iou": sam_mask_data.get("predicted_iou", 0.0),
                 "stability_score": sam_mask_data.get("stability_score", 0.0),
                 "area_filtered": area < self.min_mask_area or area > self.max_mask_area,
                 "goggle_similarity": best_goggle_sim,
-                "shoe_similarity": best_shoe_sim
+                "shoe_similarity": best_shoe_sim,
+                "cuff_similarity": best_cuff_sim
             }
 
             matches.append(match_data)
@@ -350,22 +398,30 @@ class GogglesDetector:
             status = f"{ppe_type.upper()}" if is_detected else "NO_MATCH"
             if ppe_type == "shoes" and is_detected:
                 status = f"{ppe_type.upper()}_{shoe_side.upper()}"
+            elif ppe_type == "cuffs" and is_detected:
+                status = f"{ppe_type.upper()}_{cuff_side.upper()}"
             filtered = " [AREA_FILTERED]" if match_data['area_filtered'] else ""
-            print(f"  Match {i}: {status}, sim={best_sim:.3f} (goggle={best_goggle_sim:.3f}, shoe={best_shoe_sim:.3f}), area={area}{filtered}")
+            print(f"  Match {i}: {status}, sim={best_sim:.3f} (goggle={best_goggle_sim:.3f}, shoe={best_shoe_sim:.3f}, cuff={best_cuff_sim:.3f}), area={area}{filtered}")
 
         print(f"Created {len(matches)} total matches")
         return sorted(matches, key=lambda x: x["similarity"], reverse=True)
     
     def _update_shoe_sides_with_face_info(self, matches, faces, image_width):
         """
-        Update shoe sides based on face positions after face detection
-        This handles cases where only one shoe is detected
+        Update shoe and cuff sides based on face positions after face detection
+        This handles cases where only one shoe or cuff is detected
         """
         for match in matches:
             if match['ppe_type'] == 'shoes' and match['is_detected']:
                 bbox = match['bbox']
                 updated_side = self._determine_shoe_side(bbox, faces, image_width)
                 match['shoe_side'] = updated_side
+                if 'reference_match' in match:
+                    match['reference_match']['side'] = updated_side
+            elif match['ppe_type'] == 'cuffs' and match['is_detected']:
+                bbox = match['bbox']
+                updated_side = self._determine_shoe_side(bbox, faces, image_width)  # Same logic for cuffs
+                match['cuff_side'] = updated_side
                 if 'reference_match' in match:
                     match['reference_match']['side'] = updated_side
         return matches
@@ -412,6 +468,7 @@ class GogglesDetector:
         # Separate matches by type
         goggle_matches = [m for m in matches if m['is_goggle']]
         shoe_matches = [m for m in matches if m['is_shoe']]
+        cuff_matches = [m for m in matches if m['is_cuff']]
         
         # Scale bounding boxes back to original image dimensions if image was resized
         if scale_factor != 1.0:
@@ -458,28 +515,33 @@ class GogglesDetector:
             if inside_face:
                 valid_goggle_matches.append(match)
         
-        # For shoes, we don't filter by face location
+        # For shoes and cuffs, we don't filter by face location
         valid_shoe_matches = shoe_matches
+        valid_cuff_matches = cuff_matches
         
         # Create result
         result = {
             'goggles_detected': len(valid_goggle_matches) > 0,
             'shoes_detected': len(valid_shoe_matches) > 0,
+            'cuffs_detected': len(valid_cuff_matches) > 0,
             'goggle_matches': len(valid_goggle_matches),
             'shoe_matches': len(valid_shoe_matches),
+            'cuff_matches': len(valid_cuff_matches),
             'confidence': valid_goggle_matches[0]['similarity'] if valid_goggle_matches else 0.0,
             'shoe_confidence': valid_shoe_matches[0]['similarity'] if valid_shoe_matches else 0.0,
+            'cuff_confidence': valid_cuff_matches[0]['similarity'] if valid_cuff_matches else 0.0,
             'threshold': self.similarity_threshold,
             'total_sam_masks': len(sam_masks),
             'best_match': valid_goggle_matches[0] if valid_goggle_matches else None,
             'best_shoe_match': valid_shoe_matches[0] if valid_shoe_matches else None,
+            'best_cuff_match': valid_cuff_matches[0] if valid_cuff_matches else None,
             'all_matches': matches,
             'processing_time': time.time() - start_time,
             'original_image_shape': (original_height, original_width),
             'processed_image_shape': image.shape,
             'scale_factor': scale_factor,
             'faces': scaled_faces,
-            'reference_masks_count': len(self.reference_masks)
+            'reference_masks_count': len(self.goggles_data)
         }
         
         return result
@@ -507,13 +569,17 @@ class GogglesDetector:
             similarity = match['similarity']
             ppe_type = match['ppe_type']
             
-            # Color coding: Green for goggles, Blue for shoes
+            # Color coding: Green for goggles, Blue for shoes, Purple for cuffs
             if match['is_goggle'] and match.get('inside_face', False):
                 color = (0, 255, 0)  # Green for goggles
                 label = f"Goggles: {similarity:.2f}"
             elif match['is_shoe']:
                 color = (255, 0, 0)  # Blue for shoes  
                 label = f"Shoes: {similarity:.2f}"
+            elif match['is_cuff']:
+                color = (128, 0, 128)  # Purple for cuffs
+                side = match.get('cuff_side', 'Unknown')
+                label = f"Cuffs ({side}): {similarity:.2f}"
             else:
                 continue  # Skip if not a valid detection
             
@@ -544,6 +610,11 @@ class GogglesDetector:
             status_lines.append(f"SHOES DETECTED ({detection_result['shoe_matches']} found)")
         else:
             status_lines.append("NO SHOES DETECTED")
+            
+        if detection_result['cuffs_detected']:
+            status_lines.append(f"CUFFS DETECTED ({detection_result['cuff_matches']} found)")
+        else:
+            status_lines.append("NO CUFFS DETECTED")
         
         # Draw status
         for i, status in enumerate(status_lines):
@@ -552,7 +623,7 @@ class GogglesDetector:
                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
         
         # Add confidence info
-        if detection_result['goggles_detected'] or detection_result['shoes_detected']:
+        if detection_result['goggles_detected'] or detection_result['shoes_detected'] or detection_result['cuffs_detected']:
             conf_y = 30 + len(status_lines) * 30 + 20
             if detection_result['goggles_detected']:
                 conf_text = f"Goggles Confidence: {detection_result['confidence']:.2f}"
@@ -561,6 +632,11 @@ class GogglesDetector:
                 conf_y += 25
             if detection_result['shoes_detected']:
                 conf_text = f"Shoes Confidence: {detection_result['shoe_confidence']:.2f}"
+                cv2.putText(annotated, conf_text, (10, conf_y),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+                conf_y += 25
+            if detection_result['cuffs_detected']:
+                conf_text = f"Cuffs Confidence: {detection_result['cuff_confidence']:.2f}"
                 cv2.putText(annotated, conf_text, (10, conf_y),
                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
         

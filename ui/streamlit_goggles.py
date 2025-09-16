@@ -106,15 +106,30 @@ def main():
             help="Path to reference binary masks directory"
         )
         
-        # Similarity threshold
-        similarity_threshold = st.slider(
-            "Similarity Threshold",
-            min_value=0.5,
-            max_value=1.0,
-            value=0.90,
-            step=0.05,
-            help="Minimum similarity score to consider a match (90% recommended)"
-        )
+        # Similarity thresholds
+        st.subheader("🔧 Detection Thresholds")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            similarity_threshold = st.slider(
+                "Goggles & Shoes Threshold",
+                min_value=0.5,
+                max_value=1.0,
+                value=0.90,
+                step=0.05,
+                help="Minimum similarity score for goggles and shoes detection"
+            )
+        
+        with col2:
+            cuff_similarity_threshold = st.slider(
+                "Cuffs Threshold",
+                min_value=0.3,
+                max_value=0.8,
+                value=0.50,
+                step=0.05,
+                help="Minimum similarity score for cuffs detection (typically lower than goggles/shoes)"
+            )
         
         # Maximum image size for SAM processing
         max_image_size = st.selectbox(
@@ -145,8 +160,20 @@ def main():
             st.write(f"**Goggles References**: {len(ref_files)}")
         
         if shoes_ref_exists:
-            shoes_files = list(Path("reference_data/shoes").glob("*.png")) + list(Path("reference_data/shoes").glob("*.jpg"))
-            st.write(f"**Shoes References**: {len(shoes_files)}")
+            left_shoes = list(Path("reference_data/shoes/left").glob("*.png")) + list(Path("reference_data/shoes/left").glob("*.jpg"))
+            right_shoes = list(Path("reference_data/shoes/right").glob("*.png")) + list(Path("reference_data/shoes/right").glob("*.jpg"))
+            total_shoes = len(left_shoes) + len(right_shoes)
+            st.write(f"**Shoes References**: {total_shoes} (Left: {len(left_shoes)}, Right: {len(right_shoes)})")
+        
+        # Check cuff references
+        cuff_ref_exists = Path("reference_data/cuffs").exists()
+        st.write(f"**Cuffs Reference**: {'✅' if cuff_ref_exists else '❌'}")
+        
+        if cuff_ref_exists:
+            left_cuffs = list(Path("reference_data/cuffs/left").glob("*.png")) + list(Path("reference_data/cuffs/left").glob("*.jpg"))
+            right_cuffs = list(Path("reference_data/cuffs/right").glob("*.png")) + list(Path("reference_data/cuffs/right").glob("*.jpg"))
+            total_cuffs = len(left_cuffs) + len(right_cuffs)
+            st.write(f"**Cuffs References**: {total_cuffs} (Left: {len(left_cuffs)}, Right: {len(right_cuffs)})")
         
         st.markdown("---")
         st.header("ℹ️ About")
@@ -171,6 +198,7 @@ def main():
                         sam_checkpoint=sam_checkpoint
                     )
                     detector.similarity_threshold = similarity_threshold
+                    detector.cuff_similarity_threshold = cuff_similarity_threshold
                     st.session_state.detector = detector
                     detector_ready = True
                 st.success("✅ Detector initialized successfully!")
@@ -183,8 +211,9 @@ def main():
             st.info("You can still upload images, but detection won't work until paths are fixed.")
             detector_ready = False
     else:
-        # Update threshold if changed
+        # Update thresholds if changed
         st.session_state.detector.similarity_threshold = similarity_threshold
+        st.session_state.detector.cuff_similarity_threshold = cuff_similarity_threshold
         detector_ready = True
     
     detector = st.session_state.detector if detector_ready else None
@@ -248,13 +277,13 @@ def main():
             result = st.session_state.detection_result
             
             # Overall result
-            if result['goggles_detected'] or result['shoes_detected']:
+            if result['goggles_detected'] or result['shoes_detected'] or result.get('cuffs_detected', False):
                 st.markdown('<div class="success-box"><h3>✅ PPE DETECTED</h3></div>', unsafe_allow_html=True)
             else:
                 st.markdown('<div class="error-box"><h3>❌ NO PPE DETECTED</h3></div>', unsafe_allow_html=True)
             
             # PPE Type specific results
-            col_goggles, col_shoes = st.columns(2)
+            col_goggles, col_shoes, col_cuffs = st.columns(3)
             
             with col_goggles:
                 st.markdown('<div class="ppe-type-box">', unsafe_allow_html=True)
@@ -285,6 +314,27 @@ def main():
                             st.write(f"  - Right Shoes: {len(right_shoes)}")
                 else:
                     st.markdown('<h4>👟 NO SHOES</h4>', unsafe_allow_html=True)
+                st.markdown('</div>', unsafe_allow_html=True)
+            
+            with col_cuffs:
+                st.markdown('<div class="ppe-type-box">', unsafe_allow_html=True)
+                if result.get('cuffs_detected', False):
+                    st.markdown('<h4>🧤 CUFFS DETECTED</h4>', unsafe_allow_html=True)
+                    st.write(f"**Matches**: {result.get('cuff_matches', 0)}")
+                    st.write(f"**Confidence**: {result.get('cuff_confidence', 0.0):.2f}")
+                    
+                    # Show left/right cuff breakdown
+                    left_cuffs = [m for m in result.get('all_matches', []) if m.get('is_cuff') and m.get('cuff_side') == 'left']
+                    right_cuffs = [m for m in result.get('all_matches', []) if m.get('is_cuff') and m.get('cuff_side') == 'right']
+                    
+                    if left_cuffs or right_cuffs:
+                        st.write("**Cuff Types:**")
+                        if left_cuffs:
+                            st.write(f"  - Left Cuffs: {len(left_cuffs)}")
+                        if right_cuffs:
+                            st.write(f"  - Right Cuffs: {len(right_cuffs)}")
+                else:
+                    st.markdown('<h4>🧤 NO CUFFS</h4>', unsafe_allow_html=True)
                 st.markdown('</div>', unsafe_allow_html=True)
             
             # Key metrics
@@ -416,6 +466,9 @@ def main():
                         elif match['is_shoe']:
                             shoe_side = match.get('shoe_side', 'unknown')
                             status = f"✅ SHOE ({shoe_side.upper()})"
+                        elif match['is_cuff']:
+                            cuff_side = match.get('cuff_side', 'unknown')
+                            status = f"✅ CUFF ({cuff_side.upper()})"
                         else:
                             status = "❌ NO MATCH"
                         
@@ -426,6 +479,8 @@ def main():
                         st.write(f"  - Stability: {match['stability_score']:.3f}")
                         if match['is_shoe'] and match.get('shoe_side'):
                             st.write(f"  - Shoe Side: {match['shoe_side'].upper()}")
+                        if match['is_cuff'] and match.get('cuff_side'):
+                            st.write(f"  - Cuff Side: {match['cuff_side'].upper()}")
                         if match['reference_match']:
                             st.write(f"  - Best Reference: {match['reference_match']['name']}")
                         st.write("---")
