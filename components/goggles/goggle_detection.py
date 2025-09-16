@@ -54,6 +54,7 @@ class GogglesDetector:
         self.similarity_threshold = 0.80  # 90% similarity threshold (for goggles and shoes)
         self.cuff_similarity_threshold = 0.70  # 50% similarity threshold for cuffs (more lenient)
         self.gown_similarity_threshold = 0.80  # 60% similarity threshold for gowns
+        self.hairnet_similarity_threshold = 0.75  # 75% similarity threshold for hairnets
         self.min_mask_area = 100
         self.max_mask_area = 50000
         
@@ -83,6 +84,7 @@ class GogglesDetector:
         self.right_cuffs_data = self._load_reference_embeddings("reference_data/cuffs/right")
         self.cuffs_data = self.left_cuffs_data + self.right_cuffs_data  # Combined for compatibility
         self.gowns_data = self._load_reference_embeddings("reference_data/gown")
+        self.hairnets_data = self._load_reference_embeddings("reference_data/hairnet")
         
         # Also load traditional reference masks for compatibility
         self.reference_masks = self._load_reference_masks()
@@ -91,7 +93,7 @@ class GogglesDetector:
         self.sam_model = None
         self.mask_generator = None
         
-        total_refs = len(self.goggles_data) + len(self.shoes_data) + len(self.cuffs_data) + len(self.gowns_data)
+        total_refs = len(self.goggles_data) + len(self.shoes_data) + len(self.cuffs_data) + len(self.gowns_data) + len(self.hairnets_data)
         print(f"PPE Detector initialized with {len(self.goggles_data)} goggles, {len(self.left_shoes_data)} left shoes, {len(self.right_shoes_data)} right shoes, {len(self.left_cuffs_data)} left cuffs, and {len(self.right_cuffs_data)} right cuffs references (total: {total_refs})")
 
     def _load_reference_embeddings(self, reference_path: str):
@@ -114,6 +116,9 @@ class GogglesDetector:
             side = "left" if "left" in str(reference_path) else "right"
         elif "gown" in str(reference_path):
             ppe_type = "gown"
+            side = None
+        elif "hairnets" in str(reference_path):
+            ppe_type = "hairnets"
             side = None
         else:
             ppe_type = "goggles"
@@ -275,7 +280,7 @@ class GogglesDetector:
     def _find_best_matches(self, sam_masks, full_image):
         """Find best matches using different approaches for goggles vs shoes"""
         matches = []
-        all_references = self.goggles_data + self.shoes_data + self.cuffs_data + self.gowns_data
+        all_references = self.goggles_data + self.shoes_data + self.cuffs_data + self.gowns_data + self.hairnets_data
 
         print(f"Processing {len(sam_masks)} SAM masks against {len(all_references)} references...")
 
@@ -298,12 +303,14 @@ class GogglesDetector:
             shoe_embedding = None
             cuff_embedding = None
             gown_embedding = None
+            hairnet_embedding = None
             if cropped_region.size > 0:
                 cropped_rgb = cv2.cvtColor(cropped_region, cv2.COLOR_BGR2RGB)
                 pil_cropped = Image.fromarray(cropped_rgb)
                 shoe_embedding = self._get_embedding(pil_cropped)
                 cuff_embedding = self._get_embedding(pil_cropped)  # Same embedding for both
                 gown_embedding = self._get_embedding(pil_cropped) # Same embedding for gown
+                hairnet_embedding = self._get_embedding(pil_cropped) # Same embedding for hairnet
 
             # Find best match for GOGGLES using full masked image
             best_goggle_sim = 0.0
@@ -365,29 +372,51 @@ class GogglesDetector:
                         best_gown_sim = sim
                         best_gown_ref = ref
 
+            # Find best match for HAIRNETS using cropped image
+            best_hairnet_sim = 0.0
+            best_hairnet_ref = None
+            if hairnet_embedding is not None:
+                # Try hairnet references (no left/right for hairnets)
+                for ref in self.hairnets_data:
+                    sim = F.cosine_similarity(
+                        hairnet_embedding.unsqueeze(0),
+                        ref["embedding"].unsqueeze(0)
+                    ).item()
+                    if sim > best_hairnet_sim:
+                        best_hairnet_sim = sim
+                        best_hairnet_ref = ref
+
             # Determine which PPE type has better match
-            if best_goggle_sim > best_shoe_sim and best_goggle_sim > best_cuff_sim and best_goggle_sim > best_gown_sim:
+            if best_goggle_sim > best_shoe_sim and best_goggle_sim > best_cuff_sim and best_goggle_sim > best_gown_sim and best_goggle_sim > best_hairnet_sim:
                 best_sim = best_goggle_sim
                 best_ref = best_goggle_ref
                 ppe_type = "goggles"
-            elif best_shoe_sim > best_cuff_sim and best_shoe_sim > best_gown_sim:
+            elif best_shoe_sim > best_cuff_sim and best_shoe_sim > best_gown_sim and best_shoe_sim > best_hairnet_sim:
                 best_sim = best_shoe_sim
                 best_ref = best_shoe_ref
                 ppe_type = "shoes"
-            elif best_cuff_sim > best_gown_sim:
+            elif best_cuff_sim > best_gown_sim and best_cuff_sim > best_hairnet_sim:
                 best_sim = best_cuff_sim
                 best_ref = best_cuff_ref
                 ppe_type = "cuffs"
-            else:
+            elif best_gown_sim > best_hairnet_sim:
                 best_sim = best_gown_sim
                 best_ref = best_gown_ref
                 ppe_type = "gown"
+            else:
+                best_sim = best_hairnet_sim
+                best_ref = best_hairnet_ref
+                ppe_type = "hairnet"
 
             # Use different thresholds for different PPE types
             if ppe_type == "gown":
                 is_detected = best_sim >= self.gown_similarity_threshold
                 if is_detected:
                     print(f"🦺 GOWN DETECTED! Similarity: {best_sim:.3f} (threshold: {self.gown_similarity_threshold})")
+            elif ppe_type == "hairnet":
+                is_detected = best_sim >= self.hairnet_similarity_threshold
+                if is_detected:
+                    print(f"🧢 HAIRNET DETECTED! Similarity: {best_sim:.3f} (threshold: {self.hairnet_similarity_threshold})")
             elif ppe_type == "cuffs":
                 is_detected = best_sim >= self.cuff_similarity_threshold
             else:
@@ -407,6 +436,7 @@ class GogglesDetector:
                 "is_shoe": is_detected and ppe_type == "shoes",
                 "is_cuff": is_detected and ppe_type == "cuffs",
                 "is_gown": is_detected and ppe_type == "gown",
+                "is_hairnet": is_detected and ppe_type == "hairnet",
                 "shoe_side": shoe_side if ppe_type == "shoes" else None,
                 "cuff_side": cuff_side if ppe_type == "cuffs" else None,
                 "reference_match": {
@@ -420,7 +450,8 @@ class GogglesDetector:
                 "goggle_similarity": best_goggle_sim,
                 "shoe_similarity": best_shoe_sim,
                 "cuff_similarity": best_cuff_sim,
-                "gown_similarity": best_gown_sim
+                "gown_similarity": best_gown_sim,
+                "hairnet_similarity": best_hairnet_sim
             }
 
             matches.append(match_data)
@@ -433,8 +464,10 @@ class GogglesDetector:
                 status = f"{ppe_type.upper()}_{cuff_side.upper()}"
             elif ppe_type == "gown" and is_detected:
                 status = f"{ppe_type.upper()}"  # No left/right for gowns
+            elif ppe_type == "hairnet" and is_detected:
+                status = f"{ppe_type.upper()}" # No left/right for hairnets
             filtered = " [AREA_FILTERED]" if match_data['area_filtered'] else ""
-            print(f"  Match {i}: {status}, sim={best_sim:.3f} (goggle={best_goggle_sim:.3f}, shoe={best_shoe_sim:.3f}, cuff={best_cuff_sim:.3f}, gown={best_gown_sim:.3f}), area={area}{filtered}")
+            print(f"  Match {i}: {status}, sim={best_sim:.3f} (goggle={best_goggle_sim:.3f}, shoe={best_shoe_sim:.3f}, cuff={best_cuff_sim:.3f}, gown={best_gown_sim:.3f}, hairnet={best_hairnet_sim:.3f}), area={area}{filtered}")
 
         print(f"Created {len(matches)} total matches")
         return sorted(matches, key=lambda x: x["similarity"], reverse=True)
@@ -503,6 +536,7 @@ class GogglesDetector:
         shoe_matches = [m for m in matches if m['is_shoe']]
         cuff_matches = [m for m in matches if m['is_cuff']]
         gown_matches = [m for m in matches if m['is_gown']]
+        hairnet_matches = [m for m in matches if m['is_hairnet']]
         
         # Scale bounding boxes back to original image dimensions if image was resized
         if scale_factor != 1.0:
@@ -553,6 +587,7 @@ class GogglesDetector:
         valid_shoe_matches = shoe_matches
         valid_cuff_matches = cuff_matches
         valid_gown_matches = gown_matches
+        valid_hairnet_matches = hairnet_matches
         
         # Create result
         result = {
@@ -560,20 +595,24 @@ class GogglesDetector:
             'shoes_detected': len(valid_shoe_matches) > 0,
             'cuffs_detected': len(valid_cuff_matches) > 0,
             'gown_detected': len(valid_gown_matches) > 0,
+            'hairnet_detected': len(valid_hairnet_matches) > 0,
             'goggle_matches': len(valid_goggle_matches),
             'shoe_matches': len(valid_shoe_matches),
             'cuff_matches': len(valid_cuff_matches),
             'gown_matches': len(valid_gown_matches),
+            'hairnet_matches': len(valid_hairnet_matches),
             'confidence': valid_goggle_matches[0]['similarity'] if valid_goggle_matches else 0.0,
             'shoe_confidence': valid_shoe_matches[0]['similarity'] if valid_shoe_matches else 0.0,
             'cuff_confidence': valid_cuff_matches[0]['similarity'] if valid_cuff_matches else 0.0,
             'gown_confidence': valid_gown_matches[0]['similarity'] if valid_gown_matches else 0.0,
+            'hairnet_confidence': valid_hairnet_matches[0]['similarity'] if valid_hairnet_matches else 0.0,
             'threshold': self.similarity_threshold,
             'total_sam_masks': len(sam_masks),
             'best_match': valid_goggle_matches[0] if valid_goggle_matches else None,
             'best_shoe_match': valid_shoe_matches[0] if valid_shoe_matches else None,
             'best_cuff_match': valid_cuff_matches[0] if valid_cuff_matches else None,
             'best_gown_match': valid_gown_matches[0] if valid_gown_matches else None,
+            'best_hairnet_match': valid_hairnet_matches[0] if valid_hairnet_matches else None,
             'all_matches': matches,
             'processing_time': time.time() - start_time,
             'original_image_shape': (original_height, original_width),
@@ -622,6 +661,9 @@ class GogglesDetector:
             elif match['is_gown']:
                 color = (255, 255, 0) # Yellow for gowns
                 label = f"Gown: {similarity:.2f}"
+            elif match['is_hairnet']:
+                color = (0, 255, 255) # Cyan for hairnets
+                label = f"Hairnet: {similarity:.2f}"
             else:
                 continue  # Skip if not a valid detection
             
@@ -748,6 +790,11 @@ class GogglesDetector:
             status_lines.append(f"GOWN DETECTED ({detection_result['gown_matches']} found)")
         else:
             status_lines.append("NO GOWN DETECTED")
+
+        if detection_result['hairnet_detected']:
+            status_lines.append(f"HAIRNET DETECTED ({detection_result['hairnet_matches']} found)")
+        else:
+            status_lines.append("NO HAIRNET DETECTED")
         
         # Draw status
         for i, status in enumerate(status_lines):
@@ -756,7 +803,7 @@ class GogglesDetector:
                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
         
         # Add confidence info
-        if detection_result['goggles_detected'] or detection_result['shoes_detected'] or detection_result['cuffs_detected'] or detection_result['gown_detected']:
+        if detection_result['goggles_detected'] or detection_result['shoes_detected'] or detection_result['cuffs_detected'] or detection_result['gown_detected'] or detection_result['hairnet_detected']:
             conf_y = 30 + len(status_lines) * 30 + 20
             if detection_result['goggles_detected']:
                 conf_text = f"Goggles Confidence: {detection_result['confidence']:.2f}"
@@ -775,6 +822,11 @@ class GogglesDetector:
                 conf_y += 25
             if detection_result['gown_detected']:
                 conf_text = f"Gown Confidence: {detection_result['gown_confidence']:.2f}"
+                cv2.putText(annotated, conf_text, (10, conf_y),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+                conf_y += 25
+            if detection_result['hairnet_detected']:
+                conf_text = f"Hairnet Confidence: {detection_result['hairnet_confidence']:.2f}"
                 cv2.putText(annotated, conf_text, (10, conf_y),
                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
         
@@ -810,7 +862,7 @@ class GogglesDetector:
                     del match[key]
         
         # Handle best matches similarly
-        for match_key in ['best_match', 'best_shoe_match', 'best_cuff_match', 'best_gown_match']:
+        for match_key in ['best_match', 'best_shoe_match', 'best_cuff_match', 'best_gown_match', 'best_hairnet_match']:
             if match_key in serializable_result and serializable_result[match_key]:
                 best_match = serializable_result[match_key]
                 keys_to_remove = []
