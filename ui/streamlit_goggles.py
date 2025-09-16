@@ -109,7 +109,7 @@ def main():
         # Similarity thresholds
         st.subheader("🔧 Detection Thresholds")
         
-        col1, col2 = st.columns(2)
+        col1, col2, col3 = st.columns(3)
         
         with col1:
             similarity_threshold = st.slider(
@@ -129,6 +129,16 @@ def main():
                 value=0.50,
                 step=0.05,
                 help="Minimum similarity score for cuffs detection (typically lower than goggles/shoes)"
+            )
+        
+        with col3:
+            gown_similarity_threshold = st.slider(
+                "Gowns Threshold",
+                min_value=0.4,
+                max_value=0.9,
+                value=0.60,
+                step=0.05,
+                help="Minimum similarity score for gowns detection"
             )
         
         # Maximum image size for SAM processing
@@ -199,6 +209,7 @@ def main():
                     )
                     detector.similarity_threshold = similarity_threshold
                     detector.cuff_similarity_threshold = cuff_similarity_threshold
+                    detector.gown_similarity_threshold = gown_similarity_threshold
                     st.session_state.detector = detector
                     detector_ready = True
                 st.success("✅ Detector initialized successfully!")
@@ -214,6 +225,7 @@ def main():
         # Update thresholds if changed
         st.session_state.detector.similarity_threshold = similarity_threshold
         st.session_state.detector.cuff_similarity_threshold = cuff_similarity_threshold
+        st.session_state.detector.gown_similarity_threshold = gown_similarity_threshold
         detector_ready = True
     
     detector = st.session_state.detector if detector_ready else None
@@ -283,7 +295,7 @@ def main():
                 st.markdown('<div class="error-box"><h3>❌ NO PPE DETECTED</h3></div>', unsafe_allow_html=True)
             
             # PPE Type specific results
-            col_goggles, col_shoes, col_cuffs = st.columns(3)
+            col_goggles, col_shoes, col_cuffs, col_gowns = st.columns(4)
             
             with col_goggles:
                 st.markdown('<div class="ppe-type-box">', unsafe_allow_html=True)
@@ -335,6 +347,16 @@ def main():
                             st.write(f"  - Right Cuffs: {len(right_cuffs)}")
                 else:
                     st.markdown('<h4>🧤 NO CUFFS</h4>', unsafe_allow_html=True)
+                st.markdown('</div>', unsafe_allow_html=True)
+            
+            with col_gowns:
+                st.markdown('<div class="ppe-type-box">', unsafe_allow_html=True)
+                if result.get('gown_detected', False):
+                    st.markdown('<h4>👗 GOWNS DETECTED</h4>', unsafe_allow_html=True)
+                    st.write(f"**Matches**: {result.get('gown_matches', 0)}")
+                    st.write(f"**Confidence**: {result.get('gown_confidence', 0.0):.2f}")
+                else:
+                    st.markdown('<h4>👗 NO GOWNS</h4>', unsafe_allow_html=True)
                 st.markdown('</div>', unsafe_allow_html=True)
             
             # Key metrics
@@ -469,6 +491,8 @@ def main():
                         elif match['is_cuff']:
                             cuff_side = match.get('cuff_side', 'unknown')
                             status = f"✅ CUFF ({cuff_side.upper()})"
+                        elif match['is_gown']:
+                            status = "✅ GOWN"
                         else:
                             status = "❌ NO MATCH"
                         
