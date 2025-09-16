@@ -51,9 +51,9 @@ class GogglesDetector:
         self.temp_dir.mkdir(exist_ok=True)
         
         # Detection parameters
-        self.similarity_threshold = 0.90  # 90% similarity threshold (for goggles and shoes)
-        self.cuff_similarity_threshold = 0.50  # 50% similarity threshold for cuffs (more lenient)
-        self.gown_similarity_threshold = 0.60  # 60% similarity threshold for gowns
+        self.similarity_threshold = 0.80  # 90% similarity threshold (for goggles and shoes)
+        self.cuff_similarity_threshold = 0.70  # 50% similarity threshold for cuffs (more lenient)
+        self.gown_similarity_threshold = 0.80  # 60% similarity threshold for gowns
         self.min_mask_area = 100
         self.max_mask_area = 50000
         
@@ -386,6 +386,8 @@ class GogglesDetector:
             # Use different thresholds for different PPE types
             if ppe_type == "gown":
                 is_detected = best_sim >= self.gown_similarity_threshold
+                if is_detected:
+                    print(f"🦺 GOWN DETECTED! Similarity: {best_sim:.3f} (threshold: {self.gown_similarity_threshold})")
             elif ppe_type == "cuffs":
                 is_detected = best_sim >= self.cuff_similarity_threshold
             else:
@@ -623,9 +625,95 @@ class GogglesDetector:
             else:
                 continue  # Skip if not a valid detection
             
-            thickness = 3
+            thickness = 3  # Define thickness before gown detection logic
             
-            # Draw bounding box
+            if match['is_gown']:
+                # For gowns, draw a special chest area box based on face position
+                if detection_result['faces']:
+                    # Use the first face for positioning
+                    face = detection_result['faces'][0]
+                    fx, fy, fw, fh = face
+                    
+                    # Create chest area box: 2.5 times face size, positioned below face
+                    chest_w = int(fw * 2.5)
+                    chest_h = int(fh * 2.5)
+                    chest_x = int(fx - (chest_w - fw) // 2)  # Center horizontally
+                    chest_y = int(fy + fh)  # Start below the face
+                    
+                    # Ensure box stays within image bounds
+                    img_h, img_w = annotated.shape[:2]
+                    chest_x = max(0, min(chest_x, img_w - chest_w))
+                    chest_y = max(0, min(chest_y, img_h - chest_h))
+                    chest_w = min(chest_w, img_w - chest_x)
+                    chest_h = min(chest_h, img_h - chest_y)
+                    
+                    # Ensure all coordinates are integers
+                    chest_x = int(chest_x)
+                    chest_y = int(chest_y)
+                    chest_w = int(chest_w)
+                    chest_h = int(chest_h)
+                    
+                    # Draw the chest area box
+                    cv2.rectangle(annotated, (chest_x, chest_y), 
+                                (chest_x + chest_w, chest_y + chest_h), color, thickness)
+
+                    cropped_chest_img = image[chest_y:chest_y + chest_h, chest_x:chest_x + chest_w]
+                    from ultralytics import YOLO
+                    model = YOLO("/home/sr/Anick/ppe_compliance_system/components/goggles/model_yolo/best.pt")
+                    results = model(cropped_chest_img)
+                    
+                    # Collect all detected buttons for gown assessment
+                    detected_buttons = []
+                    for result in results:
+                        boxes = result.boxes
+                        if boxes is not None:
+                            for box in boxes:
+                                x1, y1, x2, y2 = box.xyxy[0].cpu().numpy()
+                                confidence = box.conf[0].cpu().numpy()
+                                
+                                # Map YOLO coordinates back to original image by adding chest area offset
+                                orig_x1 = int(x1) + chest_x
+                                orig_y1 = int(y1) + chest_y
+                                orig_x2 = int(x2) + chest_x
+                                orig_y2 = int(y2) + chest_y
+                                
+                                # Store button data for assessment
+                                detected_buttons.append({
+                                    'bbox': [orig_x1, orig_y1, orig_x2, orig_y2],
+                                    'center_x': (orig_x1 + orig_x2) / 2,
+                                    'center_y': (orig_y1 + orig_y2) / 2,
+                                    'confidence': confidence
+                                })
+                                
+                                # Draw the box on the original image
+                                cv2.rectangle(annotated, (orig_x1, orig_y1), (orig_x2, orig_y2), (0, 255, 0), 2)
+                                cv2.putText(annotated, f"Button: {confidence:.2f}", 
+                                          (orig_x1, orig_y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+                    
+                    # Assess gown wearing based on button detection
+                    gown_assessment = self._assess_gown_wearing(detected_buttons)
+                    
+                    # Update the gown label with assessment result
+                    if gown_assessment['is_properly_worn']:
+                        label = f"Gown: {similarity:.2f} ✅ PROPERLY WORN"
+                        color = (0, 255, 0)  # Green for properly worn
+                    else:
+                        label = f"Gown: {similarity:.2f} ❌ NOT PROPERLY WORN"
+                        color = (0, 0, 255)  # Red for not properly worn
+                    
+                    # Print assessment details
+                    print(f"🦺 GOWN ASSESSMENT: {gown_assessment['message']}")
+
+                    # Add label for chest area
+                    label_size = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)[0]
+                    cv2.rectangle(annotated, (chest_x, chest_y - label_size[1] - 10), 
+                                (chest_x + label_size[0], chest_y), color, -1)
+                    cv2.putText(annotated, label, (chest_x, chest_y - 5),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+                    
+                    # Don't skip - continue to draw the actual gown detection box too
+            
+            # Draw bounding box for all PPE (including gowns)
             cv2.rectangle(annotated, (x, y), (x + w, y + h), color, thickness)
             
             # Add label
@@ -983,6 +1071,134 @@ class GogglesDetector:
         
         cv2.imwrite(str(summary_path), summary_img)
         print(f"Summary image saved to: {summary_path}")
+
+    def _assess_gown_wearing(self, detected_buttons):
+        """
+        Assess whether the gown is worn properly based on button detection and alignment
+        
+        Args:
+            detected_buttons: List of detected buttons with center coordinates and confidence
+            
+        Returns:
+            Dictionary with assessment results
+        """
+        # Filter buttons by confidence (minimum 0.3)
+        valid_buttons = [btn for btn in detected_buttons if btn['confidence'] >= 0.3]
+        
+        # Count valid buttons
+        button_count = len(valid_buttons)
+        
+        # Check if we have exactly 3 buttons
+        has_correct_count = button_count == 3
+        
+        # Check vertical alignment if we have exactly 3 buttons
+        alignment_score = 0
+        alignment_details = {}
+        
+        if has_correct_count and button_count >= 3:
+            alignment_score, alignment_details = self._check_button_alignment(valid_buttons)
+        
+        # Determine if gown is worn properly
+        is_proper = has_correct_count and alignment_score >= 0.7
+        
+        assessment = {
+            'is_properly_worn': is_proper,
+            'button_count': button_count,
+            'required_buttons': 3,
+            'has_correct_count': has_correct_count,
+            'alignment_score': alignment_score,
+            'alignment_details': alignment_details,
+            'message': self._get_gown_assessment_message(button_count, has_correct_count, alignment_score, alignment_details)
+        }
+        
+        return assessment
+    
+    def _check_button_alignment(self, buttons):
+        """
+        Check if buttons are arranged in a vertical straight line
+        
+        Args:
+            buttons: List of detected buttons with center coordinates
+            
+        Returns:
+            Tuple of (alignment_score, alignment_details)
+        """
+        if len(buttons) < 3:
+            return 0.0, {'error': 'Need at least 3 buttons to check alignment'}
+        
+        # Sort buttons by Y coordinate (top to bottom)
+        sorted_buttons = sorted(buttons, key=lambda btn: btn['center_y'])
+        
+        # Get center X coordinates of each button
+        button_centers = [(btn['center_x'], btn['center_y'], btn['confidence']) for btn in sorted_buttons]
+        
+        # Calculate the ideal vertical line (average X coordinate)
+        ideal_x = sum(center[0] for center in button_centers) / len(button_centers)
+        
+        # Calculate maximum allowed horizontal offset (tolerance)
+        max_offset = 30  # pixels tolerance for straight line
+        
+        # Check each button's horizontal deviation from the ideal line
+        deviations = []
+        total_deviation = 0
+        
+        for center_x, center_y, confidence in button_centers:
+            deviation = abs(center_x - ideal_x)
+            deviations.append(deviation)
+            total_deviation += deviation
+        
+        # Calculate alignment score (0.0 = perfect alignment, 1.0 = poor alignment)
+        avg_deviation = total_deviation / len(button_centers)
+        alignment_score = max(0.0, 1.0 - (avg_deviation / max_offset))
+        
+        # Check if all buttons are within the offset limit
+        all_within_limit = all(dev <= max_offset for dev in deviations)
+        
+        # Calculate vertical spacing consistency
+        vertical_spacings = []
+        for i in range(1, len(button_centers)):
+            spacing = button_centers[i][1] - button_centers[i-1][1]
+            vertical_spacings.append(spacing)
+        
+        # Check if vertical spacings are reasonably consistent
+        if len(vertical_spacings) >= 2:
+            avg_spacing = sum(vertical_spacings) / len(vertical_spacings)
+            spacing_variance = sum((sp - avg_spacing) ** 2 for sp in vertical_spacings) / len(vertical_spacings)
+            spacing_consistency = max(0.0, 1.0 - (spacing_variance / (avg_spacing ** 2)))
+        else:
+            spacing_consistency = 1.0
+        
+        # Combine alignment score with spacing consistency
+        final_score = (alignment_score * 0.7) + (spacing_consistency * 0.3)
+        
+        alignment_details = {
+            'ideal_vertical_line_x': ideal_x,
+            'button_centers': button_centers,
+            'horizontal_deviations': deviations,
+            'max_allowed_offset': max_offset,
+            'all_within_offset_limit': all_within_limit,
+            'vertical_spacings': vertical_spacings,
+            'spacing_consistency': spacing_consistency,
+            'alignment_score': alignment_score,
+            'final_score': final_score
+        }
+        
+        return final_score, alignment_details
+    
+    def _get_gown_assessment_message(self, button_count, has_correct_count, alignment_score, alignment_details):
+        """Generate assessment message for gown wearing"""
+        if not has_correct_count:
+            return f"Gown not properly worn. Detected {button_count} buttons (need exactly 3)."
+        
+        if button_count >= 3 and alignment_score > 0:
+            if alignment_score >= 0.8:
+                return f"Gown properly worn! Detected 3 buttons in excellent vertical alignment (score: {alignment_score:.2f})."
+            elif alignment_score >= 0.6:
+                return f"Gown properly worn. Detected 3 buttons in good vertical alignment (score: {alignment_score:.2f})."
+            else:
+                return f"Gown not properly worn. Detected 3 buttons but poor vertical alignment (score: {alignment_score:.2f})."
+        
+        return f"Gown properly worn. Detected {button_count} buttons."
 
 
 # Example usage and testing
