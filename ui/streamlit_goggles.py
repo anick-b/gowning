@@ -79,7 +79,7 @@ st.markdown("""
 
 def create_human_figure_compliance(detection_result):
     """
-    Create a human figure showing PPE compliance status with predefined areas
+    Create a human figure showing PPE compliance status with predefined areas using a real image
     
     Args:
         detection_result: Dictionary containing detection results
@@ -87,17 +87,9 @@ def create_human_figure_compliance(detection_result):
     Returns:
         matplotlib figure with human figure and compliance visualization
     """
-    # Create figure and axis
-    fig, ax = plt.subplots(1, 1, figsize=(8, 12))
-    ax.set_xlim(0, 10)
-    ax.set_ylim(0, 16)
-    ax.set_aspect('equal')
-    ax.axis('off')
-    
     # Define colors
-    GREEN = '#2E8B57'  # Green for compliant
-    RED = '#DC143C'    # Red for non-compliant
-    GRAY = '#D3D3D3'   # Gray for neutral/not detected
+    GREEN = (46/255, 139/255, 87/255, 0.6)  # Green for compliant (RGBA with transparency)
+    RED = (220/255, 20/255, 60/255, 0.6)    # Red for non-compliant (RGBA with transparency)
     
     # Check detection results
     goggles_detected = detection_result.get('goggles_detected', False)
@@ -112,22 +104,138 @@ def create_human_figure_compliance(detection_result):
     gown_properly_worn = False
     if gown_detected:
         gown_matches = [m for m in detection_result.get('all_matches', []) if m.get('is_gown', False)]
-        print(f"DEBUG: Found {len(gown_matches)} gown matches")
         if gown_matches:
             for gown_match in gown_matches:
-                print(f"DEBUG: Gown match: {gown_match}")
                 if gown_match.get('gown_assessment'):
                     gown_properly_worn = gown_match['gown_assessment'].get('is_properly_worn', False)
-                    print(f"DEBUG: Gown properly worn: {gown_properly_worn}")
                     break
-                else:
-                    print("DEBUG: No gown_assessment found in match")
-        else:
-            print("DEBUG: No gown matches found")
-    else:
-        print("DEBUG: No gown detected")
     
-    print(f"DEBUG: Final gown_detected: {gown_detected}, gown_properly_worn: {gown_properly_worn}")
+    # Try to load human figure image, fallback to matplotlib drawing if not found
+    human_image_path = "reference_data/human_figure/human_figure.png"
+    
+    if os.path.exists(human_image_path):
+        # Load the human figure image
+        human_img = cv2.imread(human_image_path)
+        if human_img is not None:
+            human_img = cv2.cvtColor(human_img, cv2.COLOR_BGR2RGB)
+            img_height, img_width = human_img.shape[:2]
+            
+            # Create figure and axis
+            fig, ax = plt.subplots(1, 1, figsize=(8, 12))
+            ax.imshow(human_img)
+            ax.set_xlim(0, img_width)
+            ax.set_ylim(img_height, 0)  # Flip Y axis for image coordinates
+            ax.axis('off')
+            
+            # Define PPE areas as percentages of image dimensions
+            # These coordinates will need to be adjusted based on your actual human figure image
+            ppe_areas = {
+                'hairnet': {'center': (img_width * 0.5, img_height * 0.15), 'width': img_width * 0.2, 'height': img_height * 0.08, 'shape': 'ellipse'},
+                'goggles': {'center': (img_width * 0.5, img_height * 0.22), 'width': img_width * 0.15, 'height': img_height * 0.06, 'shape': 'rectangle'},
+                'gown': {'center': (img_width * 0.5, img_height * 0.45), 'width': img_width * 0.4, 'height': img_height * 0.3, 'shape': 'rectangle'},
+                'buttons': {'center': (img_width * 0.5, img_height * 0.52), 'width': img_width * 0.1, 'height': img_height * 0.12, 'shape': 'rectangle'},
+                'left_shoe': {'center': (img_width * 0.35, img_height * 0.85), 'width': img_width * 0.12, 'height': img_height * 0.1, 'shape': 'ellipse'},
+                'right_shoe': {'center': (img_width * 0.65, img_height * 0.85), 'width': img_width * 0.12, 'height': img_height * 0.1, 'shape': 'ellipse'}
+            }
+            
+            # Compliance status
+            compliance_status = {
+                'hairnet': hairnet_detected,
+                'goggles': goggles_detected,
+                'gown': gown_detected,
+                'buttons': gown_detected and gown_properly_worn,
+                'left_shoe': left_shoe_detected,
+                'right_shoe': right_shoe_detected
+            }
+            
+            # Draw compliance overlays
+            for area_name, area_info in ppe_areas.items():
+                center = area_info['center']
+                width = area_info['width']
+                height = area_info['height']
+                shape = area_info['shape']
+                
+                # Determine color based on compliance
+                is_compliant = compliance_status[area_name]
+                color = GREEN if is_compliant else RED
+                
+                # Draw the area
+                if shape == 'ellipse':
+                    area_patch = Ellipse(center, width, height, 
+                                       facecolor=color, alpha=0.6, edgecolor='black', linewidth=2)
+                else:  # rectangle
+                    x = center[0] - width/2
+                    y = center[1] - height/2
+                    area_patch = Rectangle((x, y), width, height, 
+                                         facecolor=color, alpha=0.6, edgecolor='black', linewidth=2)
+                
+                ax.add_patch(area_patch)
+                
+                # Add label
+                ax.text(center[0], center[1], area_name.replace('_', ' ').title(), 
+                       ha='center', va='center', fontsize=10, fontweight='bold', color='white')
+            
+            # Add title
+            ax.set_title('PPE Compliance Status', fontsize=16, fontweight='bold', pad=20, color='white')
+            
+            # Add legend
+            legend_elements = [
+                mpatches.Patch(color=GREEN, label='Compliant'),
+                mpatches.Patch(color=RED, label='Non-Compliant')
+            ]
+            ax.legend(handles=legend_elements, loc='upper right', bbox_to_anchor=(0.98, 0.98))
+            
+            # Calculate compliance percentage
+            total_areas = len(compliance_status)
+            compliant_areas = sum(compliance_status.values())
+            compliance_percentage = (compliant_areas / total_areas) * 100
+            
+            # Add compliance summary
+            summary_text = f"Compliance: {compliant_areas}/{total_areas} ({compliance_percentage:.0f}%)"
+            ax.text(img_width * 0.5, img_height * 0.95, summary_text, ha='center', va='center', 
+                   fontsize=12, fontweight='bold', color='white',
+                   bbox=dict(boxstyle="round,pad=0.3", facecolor='black', alpha=0.7))
+            
+            plt.tight_layout()
+            return fig
+    
+    # Fallback to matplotlib drawing if image not found
+    print(f"Human figure image not found at {human_image_path}, using matplotlib drawing")
+    return create_human_figure_compliance_fallback(detection_result)
+
+def create_human_figure_compliance_fallback(detection_result):
+    """
+    Fallback function that creates a matplotlib-drawn human figure
+    """
+    # Create figure and axis
+    fig, ax = plt.subplots(1, 1, figsize=(8, 12))
+    ax.set_xlim(0, 10)
+    ax.set_ylim(0, 16)
+    ax.set_aspect('equal')
+    ax.axis('off')
+    
+    # Define colors
+    GREEN = '#2E8B57'  # Green for compliant
+    RED = '#DC143C'    # Red for non-compliant
+    
+    # Check detection results
+    goggles_detected = detection_result.get('goggles_detected', False)
+    left_shoe_detected = any(match.get('is_shoe', False) and match.get('shoe_side') == 'left' 
+                            for match in detection_result.get('all_matches', []))
+    right_shoe_detected = any(match.get('is_shoe', False) and match.get('shoe_side') == 'right' 
+                            for match in detection_result.get('all_matches', []))
+    gown_detected = detection_result.get('gown_detected', False)
+    hairnet_detected = detection_result.get('hairnet_detected', False)
+    
+    # Check if gown is properly worn (if detected)
+    gown_properly_worn = False
+    if gown_detected:
+        gown_matches = [m for m in detection_result.get('all_matches', []) if m.get('is_gown', False)]
+        if gown_matches:
+            for gown_match in gown_matches:
+                if gown_match.get('gown_assessment'):
+                    gown_properly_worn = gown_match['gown_assessment'].get('is_properly_worn', False)
+                    break
     
     # Define PPE areas with coordinates (x, y, width, height)
     ppe_areas = {
@@ -164,8 +272,8 @@ def create_human_figure_compliance(detection_result):
     compliance_status = {
         'hairnet': hairnet_detected,
         'goggles': goggles_detected,
-        'gown': gown_detected,  # Gown area is green if gown is detected
-        'buttons': gown_detected and gown_properly_worn,  # Buttons are green only if gown is properly worn
+        'gown': gown_detected,
+        'buttons': gown_detected and gown_properly_worn,
         'left_shoe': left_shoe_detected,
         'right_shoe': right_shoe_detected
     }
