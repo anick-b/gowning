@@ -109,7 +109,7 @@ def main():
         # Similarity thresholds
         st.subheader("🔧 Detection Thresholds")
         
-        col1, col2, col3 = st.columns(3)
+        col1, col2, col3, col4 = st.columns(4)
         
         with col1:
             similarity_threshold = st.slider(
@@ -139,6 +139,16 @@ def main():
                 value=0.60,
                 step=0.05,
                 help="Minimum similarity score for gowns detection"
+            )
+        
+        with col4:
+            hairnet_similarity_threshold = st.slider(
+                "Hairnet Threshold",
+                min_value=0.4,
+                max_value=0.9,
+                value=0.75,
+                step=0.05,
+                help="Minimum similarity score for hairnet detection"
             )
         
         # Maximum image size for SAM processing
@@ -210,6 +220,7 @@ def main():
                     detector.similarity_threshold = similarity_threshold
                     detector.cuff_similarity_threshold = cuff_similarity_threshold
                     detector.gown_similarity_threshold = gown_similarity_threshold
+                    detector.hairnet_similarity_threshold = hairnet_similarity_threshold
                     st.session_state.detector = detector
                     detector_ready = True
                 st.success("✅ Detector initialized successfully!")
@@ -226,6 +237,7 @@ def main():
         st.session_state.detector.similarity_threshold = similarity_threshold
         st.session_state.detector.cuff_similarity_threshold = cuff_similarity_threshold
         st.session_state.detector.gown_similarity_threshold = gown_similarity_threshold
+        st.session_state.detector.hairnet_similarity_threshold = hairnet_similarity_threshold
         detector_ready = True
     
     detector = st.session_state.detector if detector_ready else None
