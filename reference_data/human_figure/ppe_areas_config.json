@@ -1,0 +1,69 @@
+{
+  "ppe_areas": {
+    "hairnet": {
+      "center_x_percent": 49.333333333333336,
+      "center_y_percent": 11,
+      "width_percent": 12,
+      "height_percent": 5,
+      "shape": "ellipse"
+    },
+    "goggles": {
+      "center_x_percent": 49.333333333333336,
+      "center_y_percent": 15.333333333333332,
+      "width_percent": 11,
+      "height_percent": 3,
+      "shape": "rectangle"
+    },
+    "gown": {
+      "center_x_percent": 49.666666666666664,
+      "center_y_percent": 44.83333333333333,
+      "width_percent": 22,
+      "height_percent": 40,
+      "shape": "rectangle"
+    },
+    "buttons": {
+      "center_x_percent": 49.333333333333336,
+      "center_y_percent": 32,
+      "width_percent": 6,
+      "height_percent": 12,
+      "shape": "rectangle"
+    },
+    "left_shoe": {
+      "center_x_percent": 44.333333333333336,
+      "center_y_percent": 86.5,
+      "width_percent": 9,
+      "height_percent": 17,
+      "shape": "rectangle"
+    },
+    "right_shoe": {
+      "center_x_percent": 54.833333333333336,
+      "center_y_percent": 86.66666666666667,
+      "width_percent": 9,
+      "height_percent": 17,
+      "shape": "rectangle"
+    }
+  },
+  "colors": {
+    "compliant": [
+      0.1803921568627451,
+      0.5450980392156862,
+      0.3411764705882353,
+      0.6
+    ],
+    "non_compliant": [
+      0.8627450980392157,
+      0.0784313725490196,
+      0.23529411764705882,
+      0.6
+    ]
+  },
+  "display_settings": {
+    "figure_size": [
+      8,
+      12
+    ],
+    "label_fontsize": 10,
+    "title_fontsize": 16,
+    "legend_position": "upper right"
+  }
+}
