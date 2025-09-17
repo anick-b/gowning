@@ -100,16 +100,6 @@ def create_human_figure_compliance(detection_result):
     gown_detected = detection_result.get('gown_detected', False)
     hairnet_detected = detection_result.get('hairnet_detected', False)
     
-    # Check if gown is properly worn (if detected)
-    gown_properly_worn = False
-    if gown_detected:
-        gown_matches = [m for m in detection_result.get('all_matches', []) if m.get('is_gown', False)]
-        if gown_matches:
-            for gown_match in gown_matches:
-                if gown_match.get('gown_assessment'):
-                    gown_properly_worn = gown_match['gown_assessment'].get('is_properly_worn', False)
-                    break
-    
     # Try to load human figure image, fallback to matplotlib drawing if not found
     human_image_path = "reference_data/human_figure/human_figure.png"
     
@@ -127,16 +117,47 @@ def create_human_figure_compliance(detection_result):
             ax.set_ylim(img_height, 0)  # Flip Y axis for image coordinates
             ax.axis('off')
             
-            # Define PPE areas as percentages of image dimensions
-            # These coordinates will need to be adjusted based on your actual human figure image
-            ppe_areas = {
-                'hairnet': {'center': (img_width * 0.5, img_height * 0.15), 'width': img_width * 0.2, 'height': img_height * 0.08, 'shape': 'ellipse'},
-                'goggles': {'center': (img_width * 0.5, img_height * 0.22), 'width': img_width * 0.15, 'height': img_height * 0.06, 'shape': 'rectangle'},
-                'gown': {'center': (img_width * 0.5, img_height * 0.45), 'width': img_width * 0.4, 'height': img_height * 0.3, 'shape': 'rectangle'},
-                'buttons': {'center': (img_width * 0.5, img_height * 0.52), 'width': img_width * 0.1, 'height': img_height * 0.12, 'shape': 'rectangle'},
-                'left_shoe': {'center': (img_width * 0.35, img_height * 0.85), 'width': img_width * 0.12, 'height': img_height * 0.1, 'shape': 'ellipse'},
-                'right_shoe': {'center': (img_width * 0.65, img_height * 0.85), 'width': img_width * 0.12, 'height': img_height * 0.1, 'shape': 'ellipse'}
-            }
+            # Load PPE areas from configuration file
+            config_path = "reference_data/human_figure/ppe_areas_config.json"
+            if os.path.exists(config_path):
+                with open(config_path, 'r') as f:
+                    config = json.load(f)
+                    ppe_areas_config = config.get('ppe_areas', {})
+            else:
+                # Fallback to default coordinates
+                ppe_areas_config = {
+                    'hairnet': {'center_x_percent': 50, 'center_y_percent': 15, 'width_percent': 20, 'height_percent': 8, 'shape': 'ellipse'},
+                    'goggles': {'center_x_percent': 50, 'center_y_percent': 22, 'width_percent': 15, 'height_percent': 6, 'shape': 'rectangle'},
+                    'gown': {'center_x_percent': 50, 'center_y_percent': 45, 'width_percent': 40, 'height_percent': 30, 'shape': 'rectangle'},
+                    'buttons': {'center_x_percent': 50, 'center_y_percent': 52, 'width_percent': 10, 'height_percent': 12, 'shape': 'rectangle'},
+                    'left_shoe': {'center_x_percent': 35, 'center_y_percent': 85, 'width_percent': 12, 'height_percent': 10, 'shape': 'ellipse'},
+                    'right_shoe': {'center_x_percent': 65, 'center_y_percent': 85, 'width_percent': 12, 'height_percent': 10, 'shape': 'ellipse'}
+                }
+            
+            # Convert percentage coordinates to pixel coordinates
+            ppe_areas = {}
+            for area_name, area_config in ppe_areas_config.items():
+                center_x = img_width * (area_config['center_x_percent'] / 100)
+                center_y = img_height * (area_config['center_y_percent'] / 100)
+                width = img_width * (area_config['width_percent'] / 100)
+                height = img_height * (area_config['height_percent'] / 100)
+                
+                ppe_areas[area_name] = {
+                    'center': (center_x, center_y),
+                    'width': width,
+                    'height': height,
+                    'shape': area_config['shape']
+                }
+            
+            # Check if gown is properly worn (if detected)
+            gown_properly_worn = False
+            if gown_detected:
+                gown_matches = [m for m in detection_result.get('all_matches', []) if m.get('is_gown', False)]
+                if gown_matches:
+                    for gown_match in gown_matches:
+                        if gown_match.get('gown_assessment'):
+                            gown_properly_worn = gown_match['gown_assessment'].get('is_properly_worn', False)
+                            break
             
             # Compliance status
             compliance_status = {

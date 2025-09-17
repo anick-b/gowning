@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PPE Area Coordinate Editor</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .controls {
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 5px;
+        }
+        .file-input {
+            margin-bottom: 15px;
+        }
+        .file-input input[type="file"] {
+            margin-right: 10px;
+        }
+        .area-controls {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+        .area-control {
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background: white;
+        }
+        .area-control h3 {
+            margin: 0 0 10px 0;
+            color: #555;
+            font-size: 14px;
+        }
+        .area-control input, .area-control select {
+            width: 100%;
+            margin: 2px 0;
+            padding: 5px;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+        }
+        .canvas-container {
+            text-align: center;
+            margin: 20px 0;
+            border: 2px dashed #ddd;
+            border-radius: 5px;
+            padding: 20px;
+            background: #fafafa;
+        }
+        #imageCanvas {
+            border: 1px solid #ccc;
+            cursor: crosshair;
+            max-width: 100%;
+            height: auto;
+        }
+        .buttons {
+            text-align: center;
+            margin-top: 20px;
+        }
+        .btn {
+            padding: 10px 20px;
+            margin: 0 10px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .btn-primary {
+            background: #007bff;
+            color: white;
+        }
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+        .btn:hover {
+            opacity: 0.8;
+        }
+        .instructions {
+            background: #e7f3ff;
+            border: 1px solid #b3d9ff;
+            border-radius: 5px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        .instructions h3 {
+            margin-top: 0;
+            color: #0066cc;
+        }
+        .instructions ol {
+            margin: 10px 0;
+            padding-left: 20px;
+        }
+        .instructions li {
+            margin: 5px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🦺 PPE Area Coordinate Editor</h1>
+        
+        <div class="instructions">
+            <h3>📋 Instructions:</h3>
+            <ol>
+                <li><strong>Load Image:</strong> Click "Choose Image" and select your human figure image</li>
+                <li><strong>Adjust Areas:</strong> Use the controls below to position each PPE area on the image</li>
+                <li><strong>Fine-tune:</strong> Click and drag the boxes on the image to adjust positions</li>
+                <li><strong>Save Config:</strong> Click "Save Configuration" to download the JSON file</li>
+                <li><strong>Load Config:</strong> Use "Load Configuration" to load previously saved settings</li>
+            </ol>
+        </div>
+
+        <div class="controls">
+            <div class="file-input">
+                <input type="file" id="imageInput" accept="image/*">
+                <button class="btn btn-primary" onclick="loadImage()">Load Image</button>
+                <button class="btn btn-secondary" onclick="loadConfig()">Load Configuration</button>
+                <button class="btn btn-success" onclick="saveConfig()">Save Configuration</button>
+            </div>
+            
+            <div class="area-controls">
+                <div class="area-control">
+                    <h3>🧢 Hairnet</h3>
+                    <input type="range" id="hairnet-x" min="0" max="100" value="50" oninput="updateArea('hairnet')">
+                    <label>X: <span id="hairnet-x-value">50</span>%</label>
+                    <input type="range" id="hairnet-y" min="0" max="100" value="15" oninput="updateArea('hairnet')">
+                    <label>Y: <span id="hairnet-y-value">15</span>%</label>
+                    <input type="range" id="hairnet-w" min="1" max="50" value="20" oninput="updateArea('hairnet')">
+                    <label>Width: <span id="hairnet-w-value">20</span>%</label>
+                    <input type="range" id="hairnet-h" min="1" max="30" value="8" oninput="updateArea('hairnet')">
+                    <label>Height: <span id="hairnet-h-value">8</span>%</label>
+                    <select id="hairnet-shape" onchange="updateArea('hairnet')">
+                        <option value="ellipse">Ellipse</option>
+                        <option value="rectangle">Rectangle</option>
+                    </select>
+                </div>
+
+                <div class="area-control">
+                    <h3>🥽 Goggles</h3>
+                    <input type="range" id="goggles-x" min="0" max="100" value="50" oninput="updateArea('goggles')">
+                    <label>X: <span id="goggles-x-value">50</span>%</label>
+                    <input type="range" id="goggles-y" min="0" max="100" value="22" oninput="updateArea('goggles')">
+                    <label>Y: <span id="goggles-y-value">22</span>%</label>
+                    <input type="range" id="goggles-w" min="1" max="50" value="15" oninput="updateArea('goggles')">
+                    <label>Width: <span id="goggles-w-value">15</span>%</label>
+                    <input type="range" id="goggles-h" min="1" max="30" value="6" oninput="updateArea('goggles')">
+                    <label>Height: <span id="goggles-h-value">6</span>%</label>
+                    <select id="goggles-shape" onchange="updateArea('goggles')">
+                        <option value="rectangle">Rectangle</option>
+                        <option value="ellipse">Ellipse</option>
+                    </select>
+                </div>
+
+                <div class="area-control">
+                    <h3>👗 Gown</h3>
+                    <input type="range" id="gown-x" min="0" max="100" value="50" oninput="updateArea('gown')">
+                    <label>X: <span id="gown-x-value">50</span>%</label>
+                    <input type="range" id="gown-y" min="0" max="100" value="45" oninput="updateArea('gown')">
+                    <label>Y: <span id="gown-y-value">45</span>%</label>
+                    <input type="range" id="gown-w" min="1" max="80" value="40" oninput="updateArea('gown')">
+                    <label>Width: <span id="gown-w-value">40</span>%</label>
+                    <input type="range" id="gown-h" min="1" max="50" value="30" oninput="updateArea('gown')">
+                    <label>Height: <span id="gown-h-value">30</span>%</label>
+                    <select id="gown-shape" onchange="updateArea('gown')">
+                        <option value="rectangle">Rectangle</option>
+                        <option value="ellipse">Ellipse</option>
+                    </select>
+                </div>
+
+                <div class="area-control">
+                    <h3>🔘 Buttons</h3>
+                    <input type="range" id="buttons-x" min="0" max="100" value="50" oninput="updateArea('buttons')">
+                    <label>X: <span id="buttons-x-value">50</span>%</label>
+                    <input type="range" id="buttons-y" min="0" max="100" value="52" oninput="updateArea('buttons')">
+                    <label>Y: <span id="buttons-y-value">52</span>%</label>
+                    <input type="range" id="buttons-w" min="1" max="30" value="10" oninput="updateArea('buttons')">
+                    <label>Width: <span id="buttons-w-value">10</span>%</label>
+                    <input type="range" id="buttons-h" min="1" max="30" value="12" oninput="updateArea('buttons')">
+                    <label>Height: <span id="buttons-h-value">12</span>%</label>
+                    <select id="buttons-shape" onchange="updateArea('buttons')">
+                        <option value="rectangle">Rectangle</option>
+                        <option value="ellipse">Ellipse</option>
+                    </select>
+                </div>
+
+                <div class="area-control">
+                    <h3>👟 Left Shoe</h3>
+                    <input type="range" id="left_shoe-x" min="0" max="100" value="35" oninput="updateArea('left_shoe')">
+                    <label>X: <span id="left_shoe-x-value">35</span>%</label>
+                    <input type="range" id="left_shoe-y" min="0" max="100" value="85" oninput="updateArea('left_shoe')">
+                    <label>Y: <span id="left_shoe-y-value">85</span>%</label>
+                    <input type="range" id="left_shoe-w" min="1" max="30" value="12" oninput="updateArea('left_shoe')">
+                    <label>Width: <span id="left_shoe-w-value">12</span>%</label>
+                    <input type="range" id="left_shoe-h" min="1" max="30" value="10" oninput="updateArea('left_shoe')">
+                    <label>Height: <span id="left_shoe-h-value">10</span>%</label>
+                    <select id="left_shoe-shape" onchange="updateArea('left_shoe')">
+                        <option value="ellipse">Ellipse</option>
+                        <option value="rectangle">Rectangle</option>
+                    </select>
+                </div>
+
+                <div class="area-control">
+                    <h3>👟 Right Shoe</h3>
+                    <input type="range" id="right_shoe-x" min="0" max="100" value="65" oninput="updateArea('right_shoe')">
+                    <label>X: <span id="right_shoe-x-value">65</span>%</label>
+                    <input type="range" id="right_shoe-y" min="0" max="100" value="85" oninput="updateArea('right_shoe')">
+                    <label>Y: <span id="right_shoe-y-value">85</span>%</label>
+                    <input type="range" id="right_shoe-w" min="1" max="30" value="12" oninput="updateArea('right_shoe')">
+                    <label>Width: <span id="right_shoe-w-value">12</span>%</label>
+                    <input type="range" id="right_shoe-h" min="1" max="30" value="10" oninput="updateArea('right_shoe')">
+                    <label>Height: <span id="right_shoe-h-value">10</span>%</label>
+                    <select id="right_shoe-shape" onchange="updateArea('right_shoe')">
+                        <option value="ellipse">Ellipse</option>
+                        <option value="rectangle">Rectangle</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <div class="canvas-container">
+            <canvas id="imageCanvas" width="800" height="600"></canvas>
+        </div>
+
+        <div class="buttons">
+            <button class="btn btn-primary" onclick="resetToDefaults()">Reset to Defaults</button>
+            <button class="btn btn-secondary" onclick="clearImage()">Clear Image</button>
+        </div>
+    </div>
+
+    <script>
+        let canvas, ctx, image, areas = {};
+        let isDragging = false;
+        let dragArea = null;
+        let dragOffset = { x: 0, y: 0 };
+
+        // Initialize areas with default values
+        const defaultAreas = {
+            hairnet: { x: 50, y: 15, w: 20, h: 8, shape: 'ellipse' },
+            goggles: { x: 50, y: 22, w: 15, h: 6, shape: 'rectangle' },
+            gown: { x: 50, y: 45, w: 40, h: 30, shape: 'rectangle' },
+            buttons: { x: 50, y: 52, w: 10, h: 12, shape: 'rectangle' },
+            left_shoe: { x: 35, y: 85, w: 12, h: 10, shape: 'ellipse' },
+            right_shoe: { x: 65, y: 85, w: 12, h: 10, shape: 'ellipse' }
+        };
+
+        // Copy defaults to current areas
+        Object.assign(areas, defaultAreas);
+
+        window.onload = function() {
+            canvas = document.getElementById('imageCanvas');
+            ctx = canvas.getContext('2d');
+            
+            // Add mouse event listeners
+            canvas.addEventListener('mousedown', startDrag);
+            canvas.addEventListener('mousemove', drag);
+            canvas.addEventListener('mouseup', endDrag);
+            
+            // Initialize the display
+            updateAllAreas();
+        };
+
+        function loadImage() {
+            const input = document.getElementById('imageInput');
+            const file = input.files[0];
+            
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    image = new Image();
+                    image.onload = function() {
+                        // Resize canvas to fit image while maintaining aspect ratio
+                        const maxWidth = 800;
+                        const maxHeight = 600;
+                        const ratio = Math.min(maxWidth / image.width, maxHeight / image.height);
+                        
+                        canvas.width = image.width * ratio;
+                        canvas.height = image.height * ratio;
+                        
+                        drawImage();
+                    };
+                    image.src = e.target.result;
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+
+        function drawImage() {
+            if (image) {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+                drawAreas();
+            }
+        }
+
+        function drawAreas() {
+            Object.keys(areas).forEach(areaName => {
+                const area = areas[areaName];
+                const x = (area.x / 100) * canvas.width;
+                const y = (area.y / 100) * canvas.height;
+                const w = (area.w / 100) * canvas.width;
+                const h = (area.h / 100) * canvas.height;
+                
+                // Draw area
+                ctx.strokeStyle = '#ff0000';
+                ctx.lineWidth = 2;
+                ctx.fillStyle = 'rgba(255, 0, 0, 0.2)';
+                
+                if (area.shape === 'ellipse') {
+                    ctx.beginPath();
+                    ctx.ellipse(x, y, w/2, h/2, 0, 0, 2 * Math.PI);
+                    ctx.fill();
+                    ctx.stroke();
+                } else {
+                    ctx.fillRect(x - w/2, y - h/2, w, h);
+                    ctx.strokeRect(x - w/2, y - h/2, w, h);
+                }
+                
+                // Draw label
+                ctx.fillStyle = '#000';
+                ctx.font = '12px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText(areaName.replace('_', ' ').toUpperCase(), x, y + 4);
+            });
+        }
+
+        function updateArea(areaName) {
+            const area = areas[areaName];
+            area.x = parseInt(document.getElementById(areaName + '-x').value);
+            area.y = parseInt(document.getElementById(areaName + '-y').value);
+            area.w = parseInt(document.getElementById(areaName + '-w').value);
+            area.h = parseInt(document.getElementById(areaName + '-h').value);
+            area.shape = document.getElementById(areaName + '-shape').value;
+            
+            // Update display values
+            document.getElementById(areaName + '-x-value').textContent = area.x;
+            document.getElementById(areaName + '-y-value').textContent = area.y;
+            document.getElementById(areaName + '-w-value').textContent = area.w;
+            document.getElementById(areaName + '-h-value').textContent = area.h;
+            
+            drawImage();
+        }
+
+        function updateAllAreas() {
+            Object.keys(areas).forEach(areaName => {
+                updateArea(areaName);
+            });
+        }
+
+        function startDrag(e) {
+            if (!image) return;
+            
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            
+            // Check if click is inside any area
+            Object.keys(areas).forEach(areaName => {
+                const area = areas[areaName];
+                const areaX = (area.x / 100) * canvas.width;
+                const areaY = (area.y / 100) * canvas.height;
+                const areaW = (area.w / 100) * canvas.width;
+                const areaH = (area.h / 100) * canvas.height;
+                
+                if (area.shape === 'ellipse') {
+                    const dx = x - areaX;
+                    const dy = y - areaY;
+                    const distance = Math.sqrt(dx*dx + dy*dy);
+                    if (distance <= Math.max(areaW, areaH) / 2) {
+                        isDragging = true;
+                        dragArea = areaName;
+                        dragOffset.x = x - areaX;
+                        dragOffset.y = y - areaY;
+                    }
+                } else {
+                    if (x >= areaX - areaW/2 && x <= areaX + areaW/2 && 
+                        y >= areaY - areaH/2 && y <= areaY + areaH/2) {
+                        isDragging = true;
+                        dragArea = areaName;
+                        dragOffset.x = x - areaX;
+                        dragOffset.y = y - areaY;
+                    }
+                }
+            });
+        }
+
+        function drag(e) {
+            if (!isDragging || !dragArea) return;
+            
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            
+            const newX = ((x - dragOffset.x) / canvas.width) * 100;
+            const newY = ((y - dragOffset.y) / canvas.height) * 100;
+            
+            areas[dragArea].x = Math.max(0, Math.min(100, newX));
+            areas[dragArea].y = Math.max(0, Math.min(100, newY));
+            
+            // Update sliders
+            document.getElementById(dragArea + '-x').value = areas[dragArea].x;
+            document.getElementById(dragArea + '-y').value = areas[dragArea].y;
+            document.getElementById(dragArea + '-x-value').textContent = Math.round(areas[dragArea].x);
+            document.getElementById(dragArea + '-y-value').textContent = Math.round(areas[dragArea].y);
+            
+            drawImage();
+        }
+
+        function endDrag() {
+            isDragging = false;
+            dragArea = null;
+        }
+
+        function saveConfig() {
+            const config = {
+                ppe_areas: {},
+                colors: {
+                    compliant: [46/255, 139/255, 87/255, 0.6],
+                    non_compliant: [220/255, 20/255, 60/255, 0.6]
+                },
+                display_settings: {
+                    figure_size: [8, 12],
+                    label_fontsize: 10,
+                    title_fontsize: 16,
+                    legend_position: "upper right"
+                }
+            };
+            
+            Object.keys(areas).forEach(areaName => {
+                const area = areas[areaName];
+                config.ppe_areas[areaName] = {
+                    center_x_percent: area.x,
+                    center_y_percent: area.y,
+                    width_percent: area.w,
+                    height_percent: area.h,
+                    shape: area.shape
+                };
+            });
+            
+            const blob = new Blob([JSON.stringify(config, null, 2)], {type: 'application/json'});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'ppe_areas_config.json';
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function loadConfig() {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.json';
+            input.onchange = function(e) {
+                const file = e.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        try {
+                            const config = JSON.parsei(e.target.result);
+                            if (config.ppe_areas) {
+                                Object.keys(config.ppe_areas).forEach(areaName => {
+                                    const area = config.ppe_areas[areaName];
+                                    if (areas[areaName]) {
+                                        areas[areaName].x = area.center_x_percent;
+                                        areas[areaName].y = area.center_y_percent;
+                                        areas[areaName].w = area.width_percent;
+                                        areas[areaName].h = area.height_percent;
+                                        areas[areaName].shape = area.shape;
+                                        
+                                        // Update UI
+                                        document.getElementById(areaName + '-x').value = area.center_x_percent;
+                                        document.getElementById(areaName + '-y').value = area.center_y_percent;
+                                        document.getElementById(areaName + '-w').value = area.width_percent;
+                                        document.getElementById(areaName + '-h').value = area.height_percent;
+                                        document.getElementById(areaName + '-shape').value = area.shape;
+                                    }
+                                });
+                                updateAllAreas();
+                                alert('Configuration loaded successfully!');
+                            }
+                        } catch (error) {
+                            alert('Error loading configuration: ' + error.message);
+                        }
+                    };
+                    reader.readAsText(file);
+                }
+            };
+            input.click();
+        }
+
+        function resetToDefaults() {
+            Object.assign(areas, defaultAreas);
+            updateAllAreas();
+        }
+
+        function clearImage() {
+            image = null;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            canvas.width = 800;
+            canvas.height = 600;
+        }
+    </script>
+</body>
+</html>
