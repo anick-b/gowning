@@ -14,6 +14,10 @@ import numpy as np
 from PIL import Image
 import tempfile
 import json
+import matplotlib.pyplot as plt
+import matplotlib.patches as patches
+from matplotlib.patches import Rectangle, Circle, FancyBboxPatch, Ellipse
+import matplotlib.patches as mpatches
 
 # Add parent directory to path to import the detector
 sys.path.append(str(Path(__file__).parent.parent))
@@ -72,6 +76,149 @@ st.markdown("""
     }
 </style>
 """, unsafe_allow_html=True)
+
+def create_human_figure_compliance(detection_result):
+    """
+    Create a human figure showing PPE compliance status with predefined areas
+    
+    Args:
+        detection_result: Dictionary containing detection results
+        
+    Returns:
+        matplotlib figure with human figure and compliance visualization
+    """
+    # Create figure and axis
+    fig, ax = plt.subplots(1, 1, figsize=(8, 12))
+    ax.set_xlim(0, 10)
+    ax.set_ylim(0, 16)
+    ax.set_aspect('equal')
+    ax.axis('off')
+    
+    # Define colors
+    GREEN = '#2E8B57'  # Green for compliant
+    RED = '#DC143C'    # Red for non-compliant
+    GRAY = '#D3D3D3'   # Gray for neutral/not detected
+    
+    # Check detection results
+    goggles_detected = detection_result.get('goggles_detected', False)
+    left_shoe_detected = any(match.get('is_shoe', False) and match.get('shoe_side') == 'left' 
+                            for match in detection_result.get('all_matches', []))
+    right_shoe_detected = any(match.get('is_shoe', False) and match.get('shoe_side') == 'right' 
+                            for match in detection_result.get('all_matches', []))
+    gown_detected = detection_result.get('gown_detected', False)
+    hairnet_detected = detection_result.get('hairnet_detected', False)
+    
+    # Check if gown is properly worn (if detected)
+    gown_properly_worn = False
+    if gown_detected:
+        gown_matches = [m for m in detection_result.get('all_matches', []) if m.get('is_gown', False)]
+        print(f"DEBUG: Found {len(gown_matches)} gown matches")
+        if gown_matches:
+            for gown_match in gown_matches:
+                print(f"DEBUG: Gown match: {gown_match}")
+                if gown_match.get('gown_assessment'):
+                    gown_properly_worn = gown_match['gown_assessment'].get('is_properly_worn', False)
+                    print(f"DEBUG: Gown properly worn: {gown_properly_worn}")
+                    break
+                else:
+                    print("DEBUG: No gown_assessment found in match")
+        else:
+            print("DEBUG: No gown matches found")
+    else:
+        print("DEBUG: No gown detected")
+    
+    print(f"DEBUG: Final gown_detected: {gown_detected}, gown_properly_worn: {gown_properly_worn}")
+    
+    # Define PPE areas with coordinates (x, y, width, height)
+    ppe_areas = {
+        'hairnet': {'center': (5, 14.5), 'width': 1.5, 'height': 1.0, 'shape': 'ellipse'},
+        'goggles': {'center': (5, 13.5), 'width': 1.2, 'height': 0.6, 'shape': 'rectangle'},
+        'gown': {'center': (5, 10), 'width': 3, 'height': 4, 'shape': 'rectangle'},
+        'buttons': {'center': (5, 9), 'width': 0.8, 'height': 1.5, 'shape': 'rectangle'},
+        'left_shoe': {'center': (3.5, 2), 'width': 1, 'height': 1.5, 'shape': 'ellipse'},
+        'right_shoe': {'center': (6.5, 2), 'width': 1, 'height': 1.5, 'shape': 'ellipse'}
+    }
+    
+    # Draw human figure outline
+    # Head
+    head = Circle((5, 14), 1.2, fill=False, color='black', linewidth=2)
+    ax.add_patch(head)
+    
+    # Body
+    body = Rectangle((3.5, 8), 3, 6, fill=False, color='black', linewidth=2)
+    ax.add_patch(body)
+    
+    # Arms
+    left_arm = Rectangle((2, 9), 1.5, 4, fill=False, color='black', linewidth=2)
+    right_arm = Rectangle((6.5, 9), 1.5, 4, fill=False, color='black', linewidth=2)
+    ax.add_patch(left_arm)
+    ax.add_patch(right_arm)
+    
+    # Legs
+    left_leg = Rectangle((3.5, 2), 1.5, 6, fill=False, color='black', linewidth=2)
+    right_leg = Rectangle((5, 2), 1.5, 6, fill=False, color='black', linewidth=2)
+    ax.add_patch(left_leg)
+    ax.add_patch(right_leg)
+    
+    # Draw PPE compliance areas
+    compliance_status = {
+        'hairnet': hairnet_detected,
+        'goggles': goggles_detected,
+        'gown': gown_detected,  # Gown area is green if gown is detected
+        'buttons': gown_detected and gown_properly_worn,  # Buttons are green only if gown is properly worn
+        'left_shoe': left_shoe_detected,
+        'right_shoe': right_shoe_detected
+    }
+    
+    for area_name, area_info in ppe_areas.items():
+        center = area_info['center']
+        width = area_info['width']
+        height = area_info['height']
+        shape = area_info['shape']
+        
+        # Determine color based on compliance
+        is_compliant = compliance_status[area_name]
+        color = GREEN if is_compliant else RED
+        
+        # Draw the area
+        if shape == 'ellipse':
+            area_patch = Ellipse(center, width, height, 
+                               facecolor=color, alpha=0.6, edgecolor='black', linewidth=1)
+        else:  # rectangle
+            x = center[0] - width/2
+            y = center[1] - height/2
+            area_patch = Rectangle((x, y), width, height, 
+                                 facecolor=color, alpha=0.6, edgecolor='black', linewidth=1)
+        
+        ax.add_patch(area_patch)
+        
+        # Add label
+        ax.text(center[0], center[1], area_name.replace('_', ' ').title(), 
+               ha='center', va='center', fontsize=8, fontweight='bold')
+    
+    # Add title
+    ax.set_title('PPE Compliance Status', fontsize=16, fontweight='bold', pad=20)
+    
+    # Add legend
+    legend_elements = [
+        mpatches.Patch(color=GREEN, label='Compliant'),
+        mpatches.Patch(color=RED, label='Non-Compliant')
+    ]
+    ax.legend(handles=legend_elements, loc='upper right', bbox_to_anchor=(0.98, 0.98))
+    
+    # Calculate compliance percentage
+    total_areas = len(compliance_status)
+    compliant_areas = sum(compliance_status.values())
+    compliance_percentage = (compliant_areas / total_areas) * 100
+    
+    # Add compliance summary
+    summary_text = f"Compliance: {compliant_areas}/{total_areas} ({compliance_percentage:.0f}%)"
+    ax.text(5, 0.5, summary_text, ha='center', va='center', 
+           fontsize=12, fontweight='bold', 
+           bbox=dict(boxstyle="round,pad=0.3", facecolor='lightblue', alpha=0.7))
+    
+    plt.tight_layout()
+    return fig
 
 def main():
     # Header
@@ -370,6 +517,14 @@ def main():
                 else:
                     st.markdown('<h4>👗 NO GOWNS</h4>', unsafe_allow_html=True)
                 st.markdown('</div>', unsafe_allow_html=True)
+            
+            # Human Figure Compliance Visualization
+            st.markdown("---")
+            st.subheader("👤 PPE Compliance Status")
+            
+            # Create and display human figure
+            human_fig = create_human_figure_compliance(result)
+            st.pyplot(human_fig)
             
             # Key metrics
             col1_metrics, col2_metrics, col3_metrics = st.columns(3)

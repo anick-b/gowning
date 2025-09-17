@@ -454,6 +454,18 @@ class GogglesDetector:
                 "hairnet_similarity": best_hairnet_sim
             }
 
+            # Add gown assessment for gown detections
+            if ppe_type == "gown" and is_detected:
+                # For now, create a basic assessment (will be updated during visualization)
+                gown_assessment = {
+                    'is_properly_worn': False,  # Default to False, will be updated during visualization
+                    'button_count': 0,
+                    'message': 'Assessment pending visualization'
+                }
+                match_data["gown_assessment"] = gown_assessment
+            else:
+                match_data["gown_assessment"] = None
+
             matches.append(match_data)
             
             # Debug print
@@ -734,6 +746,12 @@ class GogglesDetector:
                     
                     # Assess gown wearing based on button detection
                     gown_assessment = self._assess_gown_wearing(detected_buttons)
+                    
+                    # Update the match data with the actual gown assessment
+                    for match in detection_result.get('all_matches', []):
+                        if match.get('is_gown', False):
+                            match['gown_assessment'] = gown_assessment
+                            break
                     
                     # Update the gown label with assessment result
                     if gown_assessment['is_properly_worn']:
