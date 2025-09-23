@@ -99,6 +99,13 @@ def create_human_figure_compliance(detection_result):
                             for match in detection_result.get('all_matches', []))
     gown_detected = detection_result.get('gown_detected', False)
     hairnet_detected = detection_result.get('hairnet_detected', False)
+
+    # Derive cuffs/hands/arms presence from YOLO
+    yolo_dets = detection_result.get('cuffs_yolo_detections', []) or []
+    det_names = [str(d.get('class_name', '')).lower() for d in yolo_dets]
+    arms_found = any('arm' in n for n in det_names)
+    hands_found = any('hand' in n for n in det_names)
+    cuffs_found = any('cuff' in n for n in det_names)
     
     # Try to load human figure image, fallback to matplotlib drawing if not found
     human_image_path = "reference_data/human_figure/human_figure.png"
@@ -171,13 +178,22 @@ def create_human_figure_compliance(detection_result):
             
             # Draw compliance overlays
             for area_name, area_info in ppe_areas.items():
+                # Skip drawing arm areas per compliance rule
+                if 'arm' in area_name:
+                    continue
+                
                 center = area_info['center']
                 width = area_info['width']
                 height = area_info['height']
                 shape = area_info['shape']
                 
                 # Determine color based on compliance
-                is_compliant = compliance_status[area_name]
+                if 'hand' in area_name:
+                    is_compliant = hands_found and not arms_found
+                elif 'cuff' in area_name:
+                    is_compliant = cuffs_found and not arms_found
+                else:
+                    is_compliant = compliance_status.get(area_name, False)
                 color = GREEN if is_compliant else RED
                 
                 # Draw the area
@@ -247,6 +263,13 @@ def create_human_figure_compliance_fallback(detection_result):
                             for match in detection_result.get('all_matches', []))
     gown_detected = detection_result.get('gown_detected', False)
     hairnet_detected = detection_result.get('hairnet_detected', False)
+
+    # Derive cuffs/hands/arms presence from YOLO
+    yolo_dets = detection_result.get('cuffs_yolo_detections', []) or []
+    det_names = [str(d.get('class_name', '')).lower() for d in yolo_dets]
+    arms_found = any('arm' in n for n in det_names)
+    hands_found = any('hand' in n for n in det_names)
+    cuffs_found = any('cuff' in n for n in det_names)
     
     # Check if gown is properly worn (if detected)
     gown_properly_worn = False
@@ -300,13 +323,22 @@ def create_human_figure_compliance_fallback(detection_result):
     }
     
     for area_name, area_info in ppe_areas.items():
+        # Skip drawing arm areas per compliance rule
+        if 'arm' in area_name:
+            continue
+        
         center = area_info['center']
         width = area_info['width']
         height = area_info['height']
         shape = area_info['shape']
         
         # Determine color based on compliance
-        is_compliant = compliance_status[area_name]
+        if 'hand' in area_name:
+            is_compliant = hands_found and not arms_found
+        elif 'cuff' in area_name:
+            is_compliant = cuffs_found and not arms_found
+        else:
+            is_compliant = compliance_status.get(area_name, False)
         color = GREEN if is_compliant else RED
         
         # Draw the area
@@ -398,16 +430,6 @@ def main():
             )
         
         with col2:
-            cuff_similarity_threshold = st.slider(
-                "Cuffs Threshold",
-                min_value=0.3,
-                max_value=0.8,
-                value=0.50,
-                step=0.05,
-                help="Minimum similarity score for cuffs detection (typically lower than goggles/shoes)"
-            )
-        
-        with col3:
             gown_similarity_threshold = st.slider(
                 "Gowns Threshold",
                 min_value=0.4,
@@ -494,7 +516,6 @@ def main():
                         sam_checkpoint=sam_checkpoint
                     )
                     detector.similarity_threshold = similarity_threshold
-                    detector.cuff_similarity_threshold = cuff_similarity_threshold
                     detector.gown_similarity_threshold = gown_similarity_threshold
                     detector.hairnet_similarity_threshold = hairnet_similarity_threshold
                     st.session_state.detector = detector
@@ -511,12 +532,17 @@ def main():
     else:
         # Update thresholds if changed
         st.session_state.detector.similarity_threshold = similarity_threshold
-        st.session_state.detector.cuff_similarity_threshold = cuff_similarity_threshold
         st.session_state.detector.gown_similarity_threshold = gown_similarity_threshold
         st.session_state.detector.hairnet_similarity_threshold = hairnet_similarity_threshold
         detector_ready = True
     
     detector = st.session_state.detector if detector_ready else None
+    
+    # Model and references status
+    st.subheader("📦 Models & References")
+    # Check cuffs YOLO model path
+    cuffs_yolo_path = "/home/sr/Anick/ppe_compliance_system/components/goggles/cuffs_hands_yolo_model/best.pt"
+    st.write(f"**Cuffs YOLO Model**: {'✅' if os.path.exists(cuffs_yolo_path) else '❌'} ({cuffs_yolo_path})")
     
     # Main content
     col1, col2 = st.columns([1, 1])
@@ -578,9 +604,9 @@ def main():
             
             # Overall result
             if result['goggles_detected'] or result['shoes_detected'] or result.get('cuffs_detected', False):
-                st.markdown('<div class="success-box"><h3>✅ PPE DETECTED</h3></div>', unsafe_allow_html=True)
+                st.success("Detections found.")
             else:
-                st.markdown('<div class="error-box"><h3>❌ NO PPE DETECTED</h3></div>', unsafe_allow_html=True)
+                st.info("No detections found.")
             
             # PPE Type specific results
             col_goggles, col_shoes, col_cuffs, col_gowns = st.columns(4)
@@ -617,24 +643,22 @@ def main():
                 st.markdown('</div>', unsafe_allow_html=True)
             
             with col_cuffs:
-                st.markdown('<div class="ppe-type-box">', unsafe_allow_html=True)
+                st.markdown('<h4>🧤 CUFFS / HANDS (YOLO)</h4>', unsafe_allow_html=True)
                 if result.get('cuffs_detected', False):
-                    st.markdown('<h4>🧤 CUFFS DETECTED</h4>', unsafe_allow_html=True)
-                    st.write(f"**Matches**: {result.get('cuff_matches', 0)}")
-                    st.write(f"**Confidence**: {result.get('cuff_confidence', 0.0):.2f}")
-                    
-                    # Show left/right cuff breakdown
-                    left_cuffs = [m for m in result.get('all_matches', []) if m.get('is_cuff') and m.get('cuff_side') == 'left']
-                    right_cuffs = [m for m in result.get('all_matches', []) if m.get('is_cuff') and m.get('cuff_side') == 'right']
-                    
-                    if left_cuffs or right_cuffs:
-                        st.write("**Cuff Types:**")
-                        if left_cuffs:
-                            st.write(f"  - Left Cuffs: {len(left_cuffs)}")
-                        if right_cuffs:
-                            st.write(f"  - Right Cuffs: {len(right_cuffs)}")
+                    st.write(f"**Detections**: {result.get('cuff_matches', 0)}")
+                    st.write(f"**Max Confidence**: {result.get('cuff_confidence', 0.0):.2f}")
+                    # Show per-class breakdown
+                    detections = result.get('cuffs_yolo_detections', [])
+                    class_counts = {}
+                    for d in detections:
+                        name = d.get('class_name', str(d.get('class_id', 'cls')))
+                        class_counts[name] = class_counts.get(name, 0) + 1
+                    if class_counts:
+                        st.write("**Classes:**")
+                        for name, count in class_counts.items():
+                            st.write(f"  - {name}: {count}")
                 else:
-                    st.markdown('<h4>🧤 NO CUFFS</h4>', unsafe_allow_html=True)
+                    st.markdown('<h4>🧤 NO CUFFS / HANDS</h4>', unsafe_allow_html=True)
                 st.markdown('</div>', unsafe_allow_html=True)
             
             with col_gowns:
@@ -775,37 +799,33 @@ def main():
                     else:
                         st.error("Detector not ready. Please check configuration.")
             
-            # Detailed matches (expandable)
-            with st.expander("🔍 Detailed Match Analysis"):
-                if result['all_matches']:
-                    for i, match in enumerate(result['all_matches'][:10]):  # Show top 10
-                        if match['is_goggle']:
-                            status = "✅ GOGGLE"
-                        elif match['is_shoe']:
-                            shoe_side = match.get('shoe_side', 'unknown')
-                            status = f"✅ SHOE ({shoe_side.upper()})"
-                        elif match['is_cuff']:
-                            cuff_side = match.get('cuff_side', 'unknown')
-                            status = f"✅ CUFF ({cuff_side.upper()})"
-                        elif match['is_gown']:
-                            status = "✅ GOWN"
-                        else:
-                            status = "❌ NO MATCH"
-                        
-                        st.write(f"**Match {i+1}**: {status}")
-                        st.write(f"  - Similarity: {match['similarity']:.3f}")
-                        st.write(f"  - Area: {match['area']} pixels")
-                        st.write(f"  - SAM IoU: {match['predicted_iou']:.3f}")
-                        st.write(f"  - Stability: {match['stability_score']:.3f}")
-                        if match['is_shoe'] and match.get('shoe_side'):
-                            st.write(f"  - Shoe Side: {match['shoe_side'].upper()}")
-                        if match['is_cuff'] and match.get('cuff_side'):
-                            st.write(f"  - Cuff Side: {match['cuff_side'].upper()}")
-                        if match['reference_match']:
-                            st.write(f"  - Best Reference: {match['reference_match']['name']}")
-                        st.write("---")
-                else:
-                    st.write("No matches found")
+            # Detailed matches table
+            st.subheader("🔎 Detailed Matches")
+            for i, match in enumerate(result['all_matches']):
+                is_detected = match['is_detected']
+                if not is_detected:
+                    continue
+                if match['is_goggle'] or match['is_shoe'] or match['is_gown'] or match['is_hairnet']:
+                    # Existing rendering
+                    status = ""
+                    if match['is_goggle']:
+                        status = "✅ GOGGLES"
+                    elif match['is_shoe']:
+                        status = "✅ SHOES"
+                    elif match['is_gown']:
+                        status = "✅ GOWN"
+                    elif match['is_hairnet']:
+                        status = "✅ HAIRNET"
+                    st.write(f"Match {i}: {status}, sim={match['similarity']:.3f}")
+                    if match['is_shoe'] and match.get('shoe_side'):
+                        st.write(f"  - Shoe Side: {match['shoe_side'].upper()}")
+                
+            # YOLO cuffs detections list
+            if result.get('cuffs_yolo_detections'):
+                st.subheader("🧤 YOLO Cuffs/Hands Detections")
+                for j, det in enumerate(result['cuffs_yolo_detections']):
+                    bbox = det['bbox_xyxy']
+                    st.write(f"Det {j}: class={det.get('class_name')} (id={det.get('class_id')}), conf={det.get('confidence'):.2f}, bbox={bbox}")
         
         else:
             st.info("👆 Upload an image and click 'Detect PPE' to see results")

@@ -239,6 +239,103 @@
                         <option value="rectangle">Rectangle</option>
                     </select>
                 </div>
+
+                <!-- Added Hands, Cuffs, and Arms Controls -->
+                <div class="area-control">
+                    <h3>✋ Left Hand</h3>
+                    <input type="range" id="left_hand-x" min="0" max="100" value="30" oninput="updateArea('left_hand')">
+                    <label>X: <span id="left_hand-x-value">30</span>%</label>
+                    <input type="range" id="left_hand-y" min="0" max="100" value="70" oninput="updateArea('left_hand')">
+                    <label>Y: <span id="left_hand-y-value">70</span>%</label>
+                    <input type="range" id="left_hand-w" min="1" max="30" value="10" oninput="updateArea('left_hand')">
+                    <label>Width: <span id="left_hand-w-value">10</span>%</label>
+                    <input type="range" id="left_hand-h" min="1" max="30" value="8" oninput="updateArea('left_hand')">
+                    <label>Height: <span id="left_hand-h-value">8</span>%</label>
+                    <select id="left_hand-shape" onchange="updateArea('left_hand')">
+                        <option value="ellipse">Ellipse</option>
+                        <option value="rectangle">Rectangle</option>
+                    </select>
+                </div>
+
+                <div class="area-control">
+                    <h3>✋ Right Hand</h3>
+                    <input type="range" id="right_hand-x" min="0" max="100" value="70" oninput="updateArea('right_hand')">
+                    <label>X: <span id="right_hand-x-value">70</span>%</label>
+                    <input type="range" id="right_hand-y" min="0" max="100" value="70" oninput="updateArea('right_hand')">
+                    <label>Y: <span id="right_hand-y-value">70</span>%</label>
+                    <input type="range" id="right_hand-w" min="1" max="30" value="10" oninput="updateArea('right_hand')">
+                    <label>Width: <span id="right_hand-w-value">10</span>%</label>
+                    <input type="range" id="right_hand-h" min="1" max="30" value="8" oninput="updateArea('right_hand')">
+                    <label>Height: <span id="right_hand-h-value">8</span>%</label>
+                    <select id="right_hand-shape" onchange="updateArea('right_hand')">
+                        <option value="ellipse">Ellipse</option>
+                        <option value="rectangle">Rectangle</option>
+                    </select>
+                </div>
+
+                <div class="area-control">
+                    <h3>🧤 Left Cuff</h3>
+                    <input type="range" id="left_cuff-x" min="0" max="100" value="35" oninput="updateArea('left_cuff')">
+                    <label>X: <span id="left_cuff-x-value">35</span>%</label>
+                    <input type="range" id="left_cuff-y" min="0" max="100" value="62" oninput="updateArea('left_cuff')">
+                    <label>Y: <span id="left_cuff-y-value">62</span>%</label>
+                    <input type="range" id="left_cuff-w" min="1" max="30" value="8" oninput="updateArea('left_cuff')">
+                    <label>Width: <span id="left_cuff-w-value">8</span>%</label>
+                    <input type="range" id="left_cuff-h" min="1" max="30" value="6" oninput="updateArea('left_cuff')">
+                    <label>Height: <span id="left_cuff-h-value">6</span>%</label>
+                    <select id="left_cuff-shape" onchange="updateArea('left_cuff')">
+                        <option value="rectangle">Rectangle</option>
+                        <option value="ellipse">Ellipse</option>
+                    </select>
+                </div>
+
+                <div class="area-control">
+                    <h3>🧤 Right Cuff</h3>
+                    <input type="range" id="right_cuff-x" min="0" max="100" value="65" oninput="updateArea('right_cuff')">
+                    <label>X: <span id="right_cuff-x-value">65</span>%</label>
+                    <input type="range" id="right_cuff-y" min="0" max="100" value="62" oninput="updateArea('right_cuff')">
+                    <label>Y: <span id="right_cuff-y-value">62</span>%</label>
+                    <input type="range" id="right_cuff-w" min="1" max="30" value="8" oninput="updateArea('right_cuff')">
+                    <label>Width: <span id="right_cuff-w-value">8</span>%</label>
+                    <input type="range" id="right_cuff-h" min="1" max="30" value="6" oninput="updateArea('right_cuff')">
+                    <label>Height: <span id="right_cuff-h-value">6</span>%</label>
+                    <select id="right_cuff-shape" onchange="updateArea('right_cuff')">
+                        <option value="rectangle">Rectangle</option>
+                        <option value="ellipse">Ellipse</option>
+                    </select>
+                </div>
+
+                <div class="area-control">
+                    <h3>💪 Left Arm</h3>
+                    <input type="range" id="left_arm-x" min="0" max="100" value="30" oninput="updateArea('left_arm')">
+                    <label>X: <span id="left_arm-x-value">30</span>%</label>
+                    <input type="range" id="left_arm-y" min="0" max="100" value="55" oninput="updateArea('left_arm')">
+                    <label>Y: <span id="left_arm-y-value">55</span>%</label>
+                    <input type="range" id="left_arm-w" min="1" max="50" value="12" oninput="updateArea('left_arm')">
+                    <label>Width: <span id="left_arm-w-value">12</span>%</label>
+                    <input type="range" id="left_arm-h" min="1" max="50" value="18" oninput="updateArea('left_arm')">
+                    <label>Height: <span id="left_arm-h-value">18</span>%</label>
+                    <select id="left_arm-shape" onchange="updateArea('left_arm')">
+                        <option value="rectangle">Rectangle</option>
+                        <option value="ellipse">Ellipse</option>
+                    </select>
+                </div>
+
+                <div class="area-control">
+                    <h3>💪 Right Arm</h3>
+                    <input type="range" id="right_arm-x" min="0" max="100" value="70" oninput="updateArea('right_arm')">
+                    <label>X: <span id="right_arm-x-value">70</span>%</label>
+                    <input type="range" id="right_arm-y" min="0" max="100" value="55" oninput="updateArea('right_arm')">
+                    <label>Y: <span id="right_arm-y-value">55</span>%</label>
+                    <input type="range" id="right_arm-w" min="1" max="50" value="12" oninput="updateArea('right_arm')">
+                    <label>Width: <span id="right_arm-w-value">12</span>%</label>
+                    <input type="range" id="right_arm-h" min="1" max="50" value="18" oninput="updateArea('right_arm')">
+                    <label>Height: <span id="right_arm-h-value">18</span>%</label>
+                    <select id="right_arm-shape" onchange="updateArea('right_arm')">
+                        <option value="rectangle">Rectangle</option>
+                        <option value="ellipse">Ellipse</option>
+                    </select>
+                </div>
             </div>
         </div>
 
@@ -265,7 +362,13 @@
             gown: { x: 50, y: 45, w: 40, h: 30, shape: 'rectangle' },
             buttons: { x: 50, y: 52, w: 10, h: 12, shape: 'rectangle' },
             left_shoe: { x: 35, y: 85, w: 12, h: 10, shape: 'ellipse' },
-            right_shoe: { x: 65, y: 85, w: 12, h: 10, shape: 'ellipse' }
+            right_shoe: { x: 65, y: 85, w: 12, h: 10, shape: 'ellipse' },
+            left_hand: { x: 30, y: 70, w: 10, h: 8, shape: 'ellipse' },
+            right_hand: { x: 70, y: 70, w: 10, h: 8, shape: 'ellipse' },
+            left_cuff: { x: 35, y: 62, w: 8, h: 6, shape: 'rectangle' },
+            right_cuff: { x: 65, y: 62, w: 8, h: 6, shape: 'rectangle' },
+            left_arm: { x: 30, y: 55, w: 12, h: 18, shape: 'rectangle' },
+            right_arm: { x: 70, y: 55, w: 12, h: 18, shape: 'rectangle' }
         };
 
         // Copy defaults to current areas

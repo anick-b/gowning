@@ -1,45 +1,87 @@
 {
   "ppe_areas": {
     "hairnet": {
-      "center_x_percent": 49.333333333333336,
-      "center_y_percent": 11,
-      "width_percent": 12,
-      "height_percent": 5,
+      "center_x_percent": 50,
+      "center_y_percent": 10,
+      "width_percent": 15,
+      "height_percent": 6,
       "shape": "ellipse"
     },
     "goggles": {
-      "center_x_percent": 49.333333333333336,
+      "center_x_percent": 49.666666666666664,
       "center_y_percent": 15.333333333333332,
-      "width_percent": 11,
-      "height_percent": 3,
+      "width_percent": 15,
+      "height_percent": 6,
       "shape": "rectangle"
     },
     "gown": {
-      "center_x_percent": 49.666666666666664,
-      "center_y_percent": 44.83333333333333,
-      "width_percent": 22,
-      "height_percent": 40,
+      "center_x_percent": 49.166666666666664,
+      "center_y_percent": 41.66666666666667,
+      "width_percent": 30,
+      "height_percent": 35,
       "shape": "rectangle"
     },
     "buttons": {
-      "center_x_percent": 49.333333333333336,
-      "center_y_percent": 32,
-      "width_percent": 6,
-      "height_percent": 12,
+      "center_x_percent": 49.5,
+      "center_y_percent": 30.166666666666668,
+      "width_percent": 5,
+      "height_percent": 11,
       "shape": "rectangle"
     },
     "left_shoe": {
-      "center_x_percent": 44.333333333333336,
-      "center_y_percent": 86.5,
-      "width_percent": 9,
-      "height_percent": 17,
+      "center_x_percent": 56,
+      "center_y_percent": 89,
+      "width_percent": 12,
+      "height_percent": 10,
       "shape": "rectangle"
     },
     "right_shoe": {
-      "center_x_percent": 54.833333333333336,
-      "center_y_percent": 86.66666666666667,
-      "width_percent": 9,
-      "height_percent": 17,
+      "center_x_percent": 43.166666666666664,
+      "center_y_percent": 88.33333333333333,
+      "width_percent": 12,
+      "height_percent": 10,
+      "shape": "rectangle"
+    },
+    "left_hand": {
+      "center_x_percent": 61,
+      "center_y_percent": 63.16666666666667,
+      "width_percent": 10,
+      "height_percent": 8,
+      "shape": "ellipse"
+    },
+    "right_hand": {
+      "center_x_percent": 38.166666666666664,
+      "center_y_percent": 62.5,
+      "width_percent": 10,
+      "height_percent": 8,
+      "shape": "ellipse"
+    },
+    "left_cuff": {
+      "center_x_percent": 62.83333333333333,
+      "center_y_percent": 57.166666666666664,
+      "width_percent": 8,
+      "height_percent": 6,
+      "shape": "rectangle"
+    },
+    "right_cuff": {
+      "center_x_percent": 36.666666666666664,
+      "center_y_percent": 57.333333333333336,
+      "width_percent": 8,
+      "height_percent": 6,
+      "shape": "rectangle"
+    },
+    "left_arm": {
+      "center_x_percent": 62.33333333333333,
+      "center_y_percent": 46.833333333333336,
+      "width_percent": 12,
+      "height_percent": 18,
+      "shape": "rectangle"
+    },
+    "right_arm": {
+      "center_x_percent": 37.666666666666664,
+      "center_y_percent": 46.666666666666664,
+      "width_percent": 12,
+      "height_percent": 18,
       "shape": "rectangle"
     }
   },
